@@ -3,7 +3,8 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    req.headers["access-control-request-headers"] || "Content-Type, request-id, x-request-id"
+    req.headers["access-control-request-headers"] ||
+      "Content-Type, request-id, x-request-id"
   );
 
   if (req.method === "OPTIONS") {
@@ -24,15 +25,15 @@ export default async function handler(req, res) {
     const prompt = `
 Responda em português do Brasil.
 
-Responda APENAS em JSON válido.
-Formato:
-{
-  "title": "Título aqui",
-  "essay": "Redação aqui"
-}
+Você é um gerador de redação.
+Use apenas o conteúdo enviado.
 
 Tarefa:
-Escreva uma redação completa, natural, clara e bem estruturada com base no conteúdo abaixo.
+- Gere um título curto e bom
+- Depois escreva uma redação completa, clara, natural e bem estruturada
+- Não explique o processo
+- Não use markdown
+- Entregue só o conteúdo final
 
 Instrução extra:
 ${complemento || "nenhuma"}
@@ -43,15 +44,13 @@ ${pageTitle || "não informado"}
 URL:
 ${url || "não informada"}
 
-Conteúdo:
+Conteúdo da página:
 ${pageText}
 
 Responda APENAS em JSON válido neste formato:
 {
   "title": "Título aqui",
-  "summary": "Resumo aqui",
-  "points": ["Ponto 1", "Ponto 2", "Ponto 3"],
-  "essay": "Redação de treino aqui"
+  "essay": "Redação aqui"
 }
 `;
 
@@ -108,18 +107,14 @@ Responda APENAS em JSON válido neste formato:
         parsed = JSON.parse(cleaned);
       } catch {
         parsed = {
-          title: "Material de estudo",
-          summary: "",
-          points: [],
+          title: "Redação",
           essay: cleaned
         };
       }
     }
 
     return res.status(200).json({
-      title: parsed.title || "Material de estudo",
-      summary: parsed.summary || "",
-      points: Array.isArray(parsed.points) ? parsed.points : [],
+      title: parsed.title || "Redação",
       essay: parsed.essay || ""
     });
   } catch (err) {
