@@ -1,8 +1,10 @@
 export default async function handler(req, res) {
-  // CORS (IMPORTANTE)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    req.headers["access-control-request-headers"] || "Content-Type, request-id, x-request-id"
+  );
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -13,26 +15,44 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { pageText, complemento } = req.body || {};
+    const { pageText, complemento, title: pageTitle, url } = req.body || {};
 
-    if (!pageText) {
-      return res.status(400).json({ error: "Sem texto da página" });
+    if (!pageText || typeof pageText !== "string") {
+      return res.status(400).json({ error: "pageText é obrigatório" });
     }
 
     const prompt = `
-Responda em português.
+Responda em português do Brasil.
 
-Crie uma redação completa, clara e bem estruturada com base no conteúdo abaixo.
+Responda APENAS em JSON válido.
+Formato:
+{
+  "title": "Título aqui",
+  "essay": "Redação aqui"
+}
 
-${complemento ? "Instrução extra: " + complemento : ""}
+Tarefa:
+Escreva uma redação completa, natural, clara e bem estruturada com base no conteúdo abaixo.
 
-IMPORTANTE:
-- Gere um título
-- Depois escreva a redação
-- NÃO explique nada
+Instrução extra:
+${complemento || "nenhuma"}
+
+Título da página:
+${pageTitle || "não informado"}
+
+URL:
+${url || "não informada"}
 
 Conteúdo:
 ${pageText}
+
+Responda APENAS em JSON válido neste formato:
+{
+  "title": "Título aqui",
+  "summary": "Resumo aqui",
+  "points": ["Ponto 1", "Ponto 2", "Ponto 3"],
+  "essay": "Redação de treino aqui"
+}
 `;
 
     const response = await fetch(
@@ -48,7 +68,10 @@ ${pageText}
             {
               parts: [{ text: prompt }]
             }
-          ]
+          ],
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
         })
       }
     );
@@ -56,31 +79,52 @@ ${pageText}
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(500).json({
-        error: data?.error?.message || "Erro Gemini"
+      return res.status(response.status).json({
+        error: data?.error?.message || "Erro na Gemini API",
+        details: data
       });
     }
 
-    const text =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const raw =
+      data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
 
-    if (!text) {
-      return res.status(500).json({ error: "Sem resposta da IA" });
+    if (!raw) {
+      return res.status(500).json({
+        error: "A Gemini não devolveu texto"
+      });
     }
 
-    // separa título e redação (simples)
-    const linhas = text.split("\n").filter(l => l.trim());
-    const title = linhas[0] || "Redação";
-    const essay = linhas.slice(1).join("\n");
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const cleaned = raw
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        parsed = {
+          title: "Material de estudo",
+          summary: "",
+          points: [],
+          essay: cleaned
+        };
+      }
+    }
 
     return res.status(200).json({
-      title,
-      essay
+      title: parsed.title || "Material de estudo",
+      summary: parsed.summary || "",
+      points: Array.isArray(parsed.points) ? parsed.points : [],
+      essay: parsed.essay || ""
     });
-
   } catch (err) {
     return res.status(500).json({
-      error: err.message || "Erro interno"
+      error: err?.message || "Erro interno"
     });
   }
 }
