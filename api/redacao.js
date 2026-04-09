@@ -1,4 +1,14 @@
 export default async function handler(req, res) {
+  // CORS
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // Responde ao preflight
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
@@ -11,26 +21,23 @@ export default async function handler(req, res) {
     }
 
     const prompt = `
-Você é um especialista em redações.
+Responda APENAS em JSON válido.
+Formato:
+{
+  "title": "Título aqui",
+  "essay": "Redação aqui"
+}
 
-Com base no conteúdo abaixo, escreva uma redação completa, natural, clara e bem estruturada.
+Tarefa:
+Escreva uma redação completa, natural, clara e bem estruturada com base no conteúdo abaixo.
 
-${complemento ? `Instrução extra do usuário: ${complemento}` : ""}
+${complemento ? `Complemento do usuário: ${complemento}` : ""}
 
-Informações da página:
-- Título da página: ${pageTitle || "Não informado"}
-- URL: ${url || "Não informada"}
+Título da página: ${pageTitle || "Não informado"}
+URL: ${url || "Não informada"}
 
-Conteúdo da página:
+Conteúdo:
 ${pageText}
-
-Regras:
-- Gere um título curto e bom
-- Entregue uma redação coesa
-- Linguagem natural
-- Não use marcadores
-- Não explique o processo
-- Responda em JSON válido com as chaves "title" e "essay"
 `;
 
     const response = await fetch(
@@ -60,28 +67,41 @@ Regras:
     }
 
     const rawText =
-      data?.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+      data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
 
     if (!rawText) {
-      return res.status(500).json({ error: "A Gemini não devolveu texto" });
+      return res.status(500).json({
+        error: "A Gemini não devolveu texto",
+        details: data
+      });
     }
 
     let parsed;
     try {
       parsed = JSON.parse(rawText);
     } catch {
-      parsed = {
-        title: "Redação",
-        essay: rawText
-      };
+      const cleaned = rawText
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        parsed = {
+          title: "Redação",
+          essay: cleaned
+        };
+      }
     }
 
     return res.status(200).json({
       title: parsed.title || "Redação",
-      essay: parsed.essay || rawText
+      essay: parsed.essay || ""
     });
   } catch (error) {
-    console.error(error);
+    console.error("ERRO INTERNO:", error);
     return res.status(500).json({
       error: "Erro interno no servidor",
       details: String(error?.message || error)
