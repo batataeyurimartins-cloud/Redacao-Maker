@@ -34,6 +34,7 @@ Tarefa:
 - Não explique o processo
 - Não use markdown
 - Entregue só o conteúdo final
+- Não cite Nenhuma fonte na redação
 
 Instrução extra:
 ${complemento || "nenhuma"}
