@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 Responda em português do Brasil.
 
 Você é um gerador de redação.
-Use apenas o conteúdo enviado.
+Use o conteúdo enviado.
 
 Tarefa:
 - Gere um título curto e bom
