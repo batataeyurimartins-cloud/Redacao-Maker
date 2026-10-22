@@ -3,11 +3,12 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.3.1';
+  const VERSION = '1.4.0';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
   const TIMEOUT_MS = 90000;
+  const BLOCKED_CONNECTION_MESSAGE = 'Esta página bloqueia conexões externas por CSP. Clique em Gerar em janela auxiliar para tentar pela conexão do serviço.';
   let existing = document.getElementById(PANEL_ID);
   if (existing && existing.dataset.redatorVersion !== VERSION) {
     const previousClose = existing.shadowRoot?.getElementById('close');
@@ -40,6 +41,8 @@
   let activePane = null;
   let paneOpener = null;
   let sourceKind = 'Página';
+  let useConnectionWindow = false;
+  let connectionBlockedByPolicy = false;
   const host = document.createElement('div');
   host.id = PANEL_ID;
   host.dataset.redatorVersion = VERSION;
@@ -118,6 +121,7 @@
     #status { margin:9px 5px 0; color:#92929f; font-size:10px; line-height:1.5; max-height:30px; overflow-y:auto; overflow-wrap:anywhere; scrollbar-width:thin; }
     #status[data-kind=error] { color:#f29ca9; }
     #status[data-kind=warning] { color:#ddc38f; }
+    #connection-help { display:block; margin:8px 4px 0; font-size:10px; }
     .side-status { margin:0 14px 14px; padding-top:10px; border-top:1px solid #ffffff14; color:#ddc38f;
       font-size:11px; line-height:1.5; max-height:85px; overflow:auto; overflow-wrap:anywhere; flex-shrink:0; }
     .side-status[data-kind=error] { color:#f29ca9; }
@@ -177,6 +181,8 @@
   const generateText = element('span', {}, 'Gerar redação');
   const generate = element('button', { id:'generate', type:'button', className:'primary' }, [icon('generate'),generateText]);
   const cancel = element('button', { id:'cancel', type:'button', hidden:true }, 'Cancelar');
+  const retryConnection = element('button', { id:'retry-connection', type:'button', className:'full', hidden:true }, 'Gerar em janela auxiliar');
+  const connectionHelp = element('a', { id:'connection-help', href:`${SERVICE_ORIGIN}/connection.html`, target:'_blank', rel:'noopener noreferrer', hidden:true }, 'Abrir hub em outra janela');
   const copy = element('button', { id:'copy', type:'button', disabled:true }, 'Copiar');
   const download = element('button', { id:'download', type:'button', disabled:true }, 'Baixar .txt');
   const close = element('button', { id:'close', type:'button', className:'icon-button', 'aria-label':'Fechar hub', title:'Fechar' }, icon('close'));
@@ -198,7 +204,7 @@
   }
   const body = element('div', { id:'panel-body' }, [
     element('div', { className:'settings' }, [setting('connection','Modelo'),setting('source','Referência'),setting('genre','Tipo'),setting('words','Extensão'),setting('writing','Tema'),setting('result','Redação')]),
-    element('div', { className:'generate-row' }, [generate,cancel]),status
+    element('div', { className:'generate-row' }, [generate,cancel]),status,retryConnection,connectionHelp
   ]);
   const main = element('section', { id:'main-panel', className:'card main', role:'region', 'aria-label':'Redator Groq', 'data-secondary-open':'false' }, [
     element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Redator'),element('span',{ className:'badge' },'GROQ')]),minimize,close]),body
@@ -309,7 +315,7 @@
   }
 
   function setBusy(busy) {
-    for (const control of [modelInput,contextInput,themeInput,genreInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,saveConnection,saveSource,saveWriting,...shadow.querySelectorAll('[data-choice]')]) {
+    for (const control of [modelInput,contextInput,themeInput,genreInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,retryConnection,saveConnection,saveSource,saveWriting,...shadow.querySelectorAll('[data-choice]')]) {
       control.disabled = busy;
     }
     cancel.hidden = !busy;
@@ -445,6 +451,90 @@
     return new Error(`${message} (HTTP ${response.status})`);
   }
 
+  // A janela faz a chamada na origem do serviço quando a página bloqueia fetch.
+  // Só abre por um clique explícito e nunca repete automaticamente um POST.
+  function fetchInConnectionWindow(input, signal) {
+    return new Promise((resolve,reject) => {
+      if (!/^https?:$/.test(window.location.protocol) || !window.crypto?.getRandomValues) {
+        reject(new Error('Esta página não permite a conexão auxiliar. Abra o hub pelo link abaixo e cole a referência.'));
+        return;
+      }
+      const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+      const channel = Array.from(bytes, byte => byte.toString(16).padStart(2,'0')).join('');
+      const url = new URL('/connection.html',SERVICE_ORIGIN);
+      url.hash = new URLSearchParams({channel,origin:window.location.origin}).toString();
+      let popup = null;
+      let sent = false;
+      let settled = false;
+      let poll = null;
+      let handshake = null;
+      function finish(error,response,closePopup = true) {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener('message',receive);
+        signal.removeEventListener('abort',abort);
+        clearInterval(poll);
+        clearTimeout(handshake);
+        if (closePopup) {
+          try { popup?.close(); } catch { /* A página pode separar os contextos. */ }
+        }
+        if (error) reject(error);
+        else resolve(response);
+      }
+      function abort() {
+        try { popup?.postMessage({type:'redator-groq:cancel',channel},SERVICE_ORIGIN); } catch { /* A janela já pode ter fechado. */ }
+        finish(new Error('Solicitação interrompida.'));
+      }
+      function receive(event) {
+        const message = event.data;
+        if (event.source !== popup || event.origin !== SERVICE_ORIGIN || !message || message.channel !== channel) return;
+        if (message.type === 'redator-groq:manual') {
+          finish(new Error('Continue no hub da janela auxiliar e cole a referência por lá.'),null,false);
+        } else if (message.type === 'redator-groq:ready' && !sent) {
+          sent = true;
+          clearTimeout(handshake);
+          popup.postMessage({type:'redator-groq:generate',channel,input},SERVICE_ORIGIN);
+        } else if (sent && message.type === 'redator-groq:response') {
+          if (!Number.isInteger(message.status) || message.status < 200 || message.status > 599 || typeof message.body !== 'string' || message.body.length > 131072) {
+            finish(new Error('A janela auxiliar devolveu uma resposta inválida.'));
+            return;
+          }
+          const headers = new Headers();
+          if (typeof message.retryAfter === 'string' && /^\d+(\.\d+)?$/.test(message.retryAfter)) headers.set('Retry-After',message.retryAfter);
+          try { finish(null,new Response(message.body || null,{status:message.status,headers})); }
+          catch { finish(new Error('A janela auxiliar devolveu uma resposta inválida.')); }
+        } else if (sent && message.type === 'redator-groq:error') {
+          finish(new Error(typeof message.message === 'string' ? message.message.slice(0,350) : 'Não foi possível conectar pela janela auxiliar.'));
+        }
+      }
+      window.addEventListener('message',receive);
+      signal.addEventListener('abort',abort,{once:true});
+      try { popup = window.open(url.href,'_blank','popup=yes,width=400,height=360'); }
+      catch { finish(new Error('Não foi possível abrir a janela auxiliar. Use o link abaixo para abrir o hub.')); return; }
+      if (!popup) {
+        finish(new Error('O navegador bloqueou a janela auxiliar. Permita pop-ups para esta página ou use o link abaixo.'));
+        return;
+      }
+      if (signal.aborted) { abort(); return; }
+      poll = window.setInterval(() => {
+        if (popup.closed) finish(new Error('A janela auxiliar foi fechada ou isolada pelo navegador. Use o link abaixo e cole a referência.'));
+      },500);
+      handshake = window.setTimeout(() => finish(new Error('A página impediu a conexão com a janela auxiliar. Cole a referência na janela aberta ou use o link abaixo.'),null,false),12000);
+    });
+  }
+
+  function observeConnectionPolicy(event) {
+    if (event.disposition === 'enforce' && event.effectiveDirective === 'connect-src' &&
+        (event.blockedURI === SERVICE_ORIGIN || event.blockedURI.startsWith(`${SERVICE_ORIGIN}/`))) {
+      connectionBlockedByPolicy = true;
+      // O navegador pode emitir este evento depois de rejeitar o fetch.
+      if (!closed && !activeRequest && !useConnectionWindow && !retryConnection.hidden) {
+        setStatus(BLOCKED_CONNECTION_MESSAGE,'error');
+      }
+    }
+  }
+  document.addEventListener('securitypolicyviolation',observeConnectionPolicy);
+
   async function generateEssay() {
     if (activeRequest || closed) return;
     if (!contextInput.value.trim()) {
@@ -472,15 +562,19 @@
       request.controller.abort();
     },TIMEOUT_MS);
     setBusy(true);
+    retryConnection.hidden = true;
+    connectionHelp.hidden = true;
+    connectionBlockedByPolicy = false;
     setStatus('Gerando a redação com a Groq… Você pode cancelar a solicitação.');
     try {
-      const response = await fetch(API_URL, {
+      const input = createRequest();
+      const response = useConnectionWindow ? await fetchInConnectionWindow(input,request.controller.signal) : await fetch(API_URL, {
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
         credentials:'omit',
         referrerPolicy:'no-referrer',
         signal:request.controller.signal,
-        body:JSON.stringify(createRequest())
+        body:JSON.stringify(input)
       });
       let payload;
       try { payload = await response.json(); }
@@ -515,8 +609,14 @@
       if (request.controller.signal.aborted) {
         setStatus(request.reason === 'timeout' ? 'A Groq demorou mais de 90 segundos. A solicitação foi interrompida; tente novamente.' : 'Geração cancelada. Você pode tentar novamente.','warning');
       } else if (error instanceof TypeError) {
-        setStatus('Falha de conexão com a API. Verifique sua internet. A política de segurança da página (CSP/CORS) também pode bloquear o servidor; tente outra página confiável.','error');
+        retryConnection.hidden = false;
+        connectionHelp.hidden = false;
+        setStatus(connectionBlockedByPolicy ? BLOCKED_CONNECTION_MESSAGE : 'A conexão com a API falhou. Confira sua internet ou clique em Gerar em janela auxiliar para tentar por outra conexão.','error');
       } else {
+        if (useConnectionWindow) {
+          retryConnection.hidden = false;
+          connectionHelp.hidden = false;
+        }
         setStatus(error?.message || 'Ocorreu um erro inesperado ao gerar a redação.','error');
       }
     } finally {
@@ -539,6 +639,7 @@
     document.removeEventListener('selectionchange',rememberSelection);
     document.removeEventListener('pointerdown',outsideClick);
     document.removeEventListener('keydown',outsideKeydown);
+    document.removeEventListener('securitypolicyviolation',observeConnectionPolicy);
     window.removeEventListener('pagehide',cleanup);
     host.remove();
   }
@@ -597,6 +698,10 @@
     syncSummaries();
   });
   generate.addEventListener('click',generateEssay);
+  retryConnection.addEventListener('click',() => {
+    useConnectionWindow = true;
+    generateEssay();
+  });
   cancel.addEventListener('click',() => {
     if (!activeRequest) return;
     activeRequest.reason = 'user';

@@ -22,6 +22,10 @@ Para instalar manualmente, clique em **Copiar bookmarklet**, crie um favorito ch
 
 Algumas páginas bloqueiam o carregamento externo do bookmarklet; páginas internas do navegador e visualizadores de PDF também podem impedir sua execução. Em **Outras formas de abrir o hub**, você encontra **Copiar script completo** para colar o código no Console. Não desative a segurança do navegador.
 
+Se o hub abrir, mas a página bloquear a conexão, clique em **Gerar em janela auxiliar** após a falha. Uma janela do serviço faz a chamada na própria origem e devolve a redação ao hub original. Ela fecha ao concluir ou cancelar. A tentativa ocorre somente com seu clique: uma chamada que falhou não é repetida automaticamente. O texto e as opções seguem por mensagens entre as duas janelas, com origem, janela e identificador conferidos; não são colocados na URL.
+
+Se o navegador bloquear pop-ups ou isolar as janelas, use **Abrir hub em outra janela** e cole a referência manualmente. Essa alternativa também está disponível em https://redacao-maker.vercel.app/connection.html quando a página bloqueia o carregamento do bookmarklet inteiro.
+
 **Escape**, o **×** das opções ou um clique fora fecham o painel auxiliar. **−** recolhe o hub; **+** expande. O **×** do hub encerra a sessão e limpa os campos. Reexecutar a mesma versão preserva o rascunho; uma versão nova encerra e substitui a anterior.
 
 ## Configuração na Vercel
@@ -72,7 +76,7 @@ Cada geração pública consome a cota ou saldo da conta Groq configurada pelo a
 | HTTP 502 com erro de autenticação do provedor | Confira `GROQ_API_KEY` na Vercel e reimplante. |
 | HTTP 503 | O administrador precisa configurar `GROQ_API_KEY` e reimplantar. |
 | HTTP 504 | A Groq demorou a responder; tente novamente depois. |
-| CSP/CORS ou conexão bloqueada pela página | Use outra página confiável que permita a conexão e cole a referência manualmente; não desative a segurança do navegador. |
+| Conexão externa bloqueada por CSP ou falha de rede/CORS | Confira a conexão e use **Gerar em janela auxiliar**. Se o hub não carregar, abra `/connection.html` e cole a referência manualmente. |
 
 ## Desenvolvimento e verificação
 
