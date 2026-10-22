@@ -1,6 +1,6 @@
 'use strict';
 
-const { createHash, timingSafeEqual } = require('node:crypto');
+const { isIP } = require('node:net');
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
@@ -8,6 +8,14 @@ const MODELS = new Set([DEFAULT_MODEL, 'llama-3.1-8b-instant']);
 const WORD_COUNTS = new Set([250, 350, 500, 700]);
 const MAX_BODY_BYTES = 64 * 1024;
 const TIMEOUT_MS = 80000;
+const RATE_WINDOW_MS = 60000;
+const MAX_REQUESTS_PER_IP = 5;
+const MAX_REQUESTS_GLOBAL = 30;
+const MAX_TRACKED_IPS = 2048;
+// Proteção leve por instância. Não é um limite distribuído nem uma garantia de
+// orçamento: novas instâncias da Vercel possuem contadores independentes.
+const ipWindows = new Map();
+let globalWindow = { count: 0, expiresAt: 0 };
 const GENRES = {
   dissertativa: 'Escreva uma redação dissertativa argumentativa, com introdução, desenvolvimento e conclusão.',
   enem: 'Escreva uma redação dissertativa argumentativa no modelo ENEM: apresente uma tese, desenvolva dois argumentos e conclua com uma proposta de intervenção que inclua agente, ação, meio, finalidade e detalhamento. Respeite os direitos humanos.',
@@ -17,7 +25,7 @@ const GENRES = {
 function headers(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Expose-Headers', 'Retry-After');
   res.setHeader('Access-Control-Max-Age', '600');
   res.setHeader('Cache-Control', 'no-store');
@@ -40,9 +48,39 @@ function requestHeader(req, name) {
   return typeof value === 'string' ? value : '';
 }
 
-function matchesToken(actual, expected) {
-  const hash = value => createHash('sha256').update(value).digest();
-  return timingSafeEqual(hash(actual), hash(expected));
+function clientIP(req) {
+  // A Vercel sobrescreve x-forwarded-for por padrão, impedindo a falsificação
+  // direta pelo cliente: https://vercel.com/docs/headers/request-headers
+  // Fora da plataforma, cabeçalhos enviados pelo cliente não são confiáveis.
+  const forwarded = process.env.VERCEL === '1' ? requestHeader(req, 'x-forwarded-for').trim() : '';
+  const remote = req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+  let ip = isIP(forwarded) ? forwarded : isIP(remote) ? remote : 'unknown';
+  ip = ip.toLowerCase();
+  if (ip.startsWith('::ffff:') && isIP(ip.slice(7)) === 4) ip = ip.slice(7);
+  return ip;
+}
+
+function takeQuota(req) {
+  const now = Date.now();
+  for (const [ip, window] of ipWindows) {
+    if (window.expiresAt <= now) ipWindows.delete(ip);
+  }
+  if (globalWindow.expiresAt <= now) globalWindow = { count: 0, expiresAt: now + RATE_WINDOW_MS };
+  const ip = clientIP(req);
+  const existing = ipWindows.get(ip);
+  const window = existing || { count: 0, expiresAt: now + RATE_WINDOW_MS };
+  let waitUntil = 0;
+  if (globalWindow.count >= MAX_REQUESTS_GLOBAL) waitUntil = globalWindow.expiresAt;
+  if (window.count >= MAX_REQUESTS_PER_IP) waitUntil = Math.max(waitUntil, window.expiresAt);
+  // Limita a memória sem descartar contadores ativos e permitir sua evasão.
+  if (!existing && ipWindows.size >= MAX_TRACKED_IPS) {
+    waitUntil = Math.max(waitUntil, Math.min(...[...ipWindows.values()].map(entry => entry.expiresAt)));
+  }
+  if (waitUntil) return Math.max(1, Math.ceil((waitUntil - now) / 1000));
+  window.count++;
+  ipWindows.set(ip, window);
+  globalWindow.count++;
+  return 0;
 }
 
 function inputError(message, status = 400) {
@@ -138,22 +176,6 @@ module.exports = async function generate(req, res) {
     return;
   }
 
-  // Autoriza o hub antes de ler o corpo ou consultar a chave do provedor.
-  const authorization = requestHeader(req, 'authorization');
-  const match = /^Bearer ([^\s]{1,512})$/i.exec(authorization);
-  if (!match) {
-    fail(res, 401, 'unauthorized', 'Informe um código de acesso válido para este hub.');
-    return;
-  }
-  const accessToken = (process.env.HUB_ACCESS_TOKEN || '').trim();
-  if (accessToken.length < 24 || /\s/.test(accessToken) || accessToken.length > 512) {
-    fail(res, 503, 'server_not_configured', 'O código de acesso do hub ainda não foi configurado no servidor.');
-    return;
-  }
-  if (!matchesToken(match[1], accessToken)) {
-    fail(res, 401, 'unauthorized', 'Código de acesso inválido. Confira o código do seu hub.');
-    return;
-  }
   const groqKey = (process.env.GROQ_API_KEY || '').trim();
   if (!groqKey || /\s/.test(groqKey)) {
     fail(res, 503, 'server_not_configured', 'A chave GROQ_API_KEY ainda não foi configurada no servidor.');
@@ -166,6 +188,13 @@ module.exports = async function generate(req, res) {
     if (error.configError) fail(res, 503, 'server_not_configured', error.message);
     else if (error.inputStatus) fail(res, error.inputStatus, error.inputStatus === 413 ? 'payload_too_large' : 'invalid_input', error.message);
     else fail(res, 400, 'invalid_input', 'Não foi possível ler a solicitação. Envie um corpo JSON válido.');
+    return;
+  }
+
+  const retryAfter = takeQuota(req);
+  if (retryAfter) {
+    res.setHeader('Retry-After', String(retryAfter));
+    fail(res, 429, 'hub_rate_limit', 'O limite temporário deste serviço foi atingido. Aguarde e tente novamente.');
     return;
   }
 
@@ -225,7 +254,7 @@ module.exports = async function generate(req, res) {
     }
     if (controller.signal.aborted) throw new Error('aborted');
     let content = choice.message.content.trim();
-    for (const secret of [groqKey, accessToken]) content = content.split(secret).join('[segredo omitido]');
+    content = content.split(groqKey).join('[segredo omitido]');
     send(res, 200, {
       choices: [{ message: { role: 'assistant', content }, finish_reason: typeof choice.finish_reason === 'string' ? choice.finish_reason : 'stop' }],
       model: input.model

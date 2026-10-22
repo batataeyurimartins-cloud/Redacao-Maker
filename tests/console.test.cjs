@@ -6,7 +6,6 @@ const { chromium } = require('playwright');
 
 const scriptPath = path.join(__dirname, '..', 'redator-groq.js');
 const API_URL = process.env.HUB_API_URL || 'https://redacao-maker.vercel.app/api/generate';
-const FAKE_ACCESS_CODE = 'hub_test_only_fake_code';
 const fixture = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Tema de redação</title></head>
 <body><nav>MENU_QUE_NAO_E_FONTE</nav><main><h1>A inclusão digital no Brasil</h1>
 <p id="selection-target">O acesso à internet permite estudar e participar da sociedade.</p>
@@ -44,6 +43,10 @@ async function mount(t, handler = async route => jsonResponse(route, 200, reply(
       return route.abort();
     }
     if (route.request().url() === API_URL) {
+      const headers = route.request().headers();
+      for (const name of ['authorization', 'x-api-key', 'api-key', 'x-access-token', 'x-hub-token']) {
+        assert.equal(headers[name], undefined, `public requests must not include ${name}`);
+      }
       if (route.request().method() === 'OPTIONS') {
         return route.fulfill({ status: 204, headers: corsHeaders() });
       }
@@ -62,7 +65,7 @@ async function mount(t, handler = async route => jsonResponse(route, 200, reply(
 
 function corsHeaders() {
   return { 'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-allow-headers': 'content-type',
     'access-control-allow-methods': 'POST, OPTIONS' };
 }
 
@@ -89,9 +92,6 @@ async function closeSecondary(page) {
 }
 
 async function configure(page, context = 'A inclusão digital ainda enfrenta barreiras econômicas no Brasil.') {
-  await openPane(page, 'connection');
-  await control(page, 'api-key').fill(FAKE_ACCESS_CODE);
-  await control(page, 'save-connection').click();
   await openPane(page, 'source');
   await control(page, 'context').fill(context);
   await control(page, 'save-source').click();
@@ -121,7 +121,7 @@ test('captures relevant visible text without private controls, navigation or its
   assert.match(content, /inclusão digital/);
   assert.match(content, /custo da conexão/);
   assert.doesNotMatch(content, /SEGREDO_|MENU_QUE_NAO_E_FONTE|RODAPE_QUE_NAO_E_FONTE/);
-  assert.doesNotMatch(content, /Gerar redação|Código de acesso|Chave da API|hub_test_only_fake_code|gsk_/i);
+  assert.doesNotMatch(content, /Gerar redação|Código de acesso|Chave da API|gsk_/i);
 });
 
 test('captures a user-selected excerpt independently from the whole-page context', async t => {
@@ -139,7 +139,7 @@ test('captures a user-selected excerpt independently from the whole-page context
   assert.equal((await control(page, 'context').inputValue()).trim(), expected.trim());
 });
 
-test('uses edited context and settings, sends credentials only as Authorization, and renders output as plain text', async t => {
+test('sends anonymous requests with edited context and settings and renders output as plain text', async t => {
   let request;
   const output = '<img src=x onerror="window.PWNED=true">\n\nUma redação em texto puro.';
   const page = await mount(t, async route => {
@@ -156,7 +156,7 @@ test('uses edited context and settings, sends credentials only as Authorization,
   await control(page, 'instructions').fill('Discuta o papel das bibliotecas públicas.');
   await control(page, 'save-writing').click();
   await generateAndWait(page);
-  assert.equal(request.headers.authorization, `Bearer ${FAKE_ACCESS_CODE}`);
+  assert.equal(request.headers.authorization, undefined);
   assert.equal(request.data.model, 'llama-3.3-70b-versatile');
   assert.deepEqual(Object.keys(request.data).sort(), ['context', 'genre', 'instructions', 'model', 'theme', 'words']);
   assert.equal(request.data.context, context);
@@ -165,7 +165,7 @@ test('uses edited context and settings, sends credentials only as Authorization,
   assert.equal(request.data.genre, 'dissertativa');
   assert.equal(Number(request.data.words), 350);
   const sent = JSON.stringify(request.data);
-  assert.doesNotMatch(sent, /custo da conexão|SEGREDO_|hub_test_only_fake_code/);
+  assert.doesNotMatch(sent, /custo da conexão|SEGREDO_/);
   assert.equal(await control(page, 'result').inputValue(), output);
   assert.equal(await control(page, 'pane-result').isVisible(), true);
   assert.equal(await page.evaluate(() => window.PWNED), undefined);
@@ -183,11 +183,11 @@ test('repeated execution keeps a single panel and preserves the user draft', asy
 });
 
 for (const [status, pattern] of [
-  [401, /código|acesso|chave|autentica|inválid|401/i],
+  [401, /serviço|servidor|autentica|inválid|401/i],
   [429, /limite|muitas|aguard|429|requisiç/i],
   [500, /groq|servidor|tente|500|indispon/i],
 ]) {
-  test(`handles HTTP ${status}, hides credentials, and permits a successful retry`, async t => {
+  test(`handles HTTP ${status} and permits a successful retry`, async t => {
     let calls = 0;
     const page = await mount(t, async route => {
       calls += 1;
@@ -199,7 +199,6 @@ for (const [status, pattern] of [
     await generateAndWait(page);
     const statusText = await control(page, 'status').textContent();
     assert.match(statusText, pattern);
-    assert.doesNotMatch(statusText, /hub_test_only_fake_code/);
     await generateAndWait(page);
     assert.equal(await control(page, 'result').inputValue(), 'Texto recuperado após a nova tentativa.');
     assert.equal(calls, 2);
@@ -273,32 +272,32 @@ test('closing the panel aborts a pending generation and removes the UI', async t
   assert.equal(await page.locator('#redator-groq-console').count(), 0);
 });
 
-test('never persists the app access code or page text in browser storage', async t => {
+test('never persists reference text or model settings in browser storage', async t => {
   const page = await mount(t);
+  await openPane(page, 'connection');
+  await control(page, 'model').fill('llama-3.1-8b-instant');
+  await control(page, 'save-connection').click();
   await configure(page, 'CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA');
   await generateAndWait(page);
   const stored = await page.evaluate(() => JSON.stringify({
     local: { ...localStorage }, session: { ...sessionStorage }, cookie: document.cookie,
   }));
-  assert.doesNotMatch(stored, /hub_test_only_fake_code|CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
+  assert.doesNotMatch(stored, /llama-3\.1-8b-instant|CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
   await control(page, 'close').click();
   await page.addScriptTag({ content: script });
-  assert.equal(await control(page, 'api-key').inputValue(), '');
+  assert.doesNotMatch(await control(page, 'context').inputValue(), /CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
+  assert.equal(await control(page, 'model').inputValue(), 'llama-3.3-70b-versatile');
 });
 
-test('does not call the backend without both an app access code and usable reference text', async t => {
+test('does not call the public backend without usable reference text', async t => {
   let calls = 0;
   const page = await mount(t, async route => { calls += 1; await jsonResponse(route, 200, reply()); });
-  await control(page, 'generate').click();
-  assert.match(await control(page, 'status').textContent(), /código|acesso|chave/i);
-  await openPane(page, 'connection');
-  await control(page, 'api-key').fill(FAKE_ACCESS_CODE);
-  await control(page, 'save-connection').click();
   await openPane(page, 'source');
   await control(page, 'context').fill('   ');
   await control(page, 'save-source').click();
   await control(page, 'generate').click();
   assert.match(await control(page, 'status').textContent(), /referência|texto|trecho/i);
+  assert.equal(await control(page, 'pane-source').isVisible(), true);
   assert.equal(calls, 0);
 });
 
@@ -326,14 +325,11 @@ test('falls back to body content and repeated capture excludes its own panel and
     '<form>SEGREDO_FORM<input value="SEGREDO_INPUT"></form>' +
     '<div contenteditable="true">SEGREDO_EDITOR</div></body></html>';
   const page = await mount(t, undefined, html);
-  await openPane(page, 'connection');
-  await control(page, 'api-key').fill(FAKE_ACCESS_CODE);
-  await control(page, 'save-connection').click();
   await openPane(page, 'source');
   await control(page, 'capture-page').click();
   const captured = await control(page, 'context').inputValue();
   assert.match(captured, /A leitura fortalece/);
-  assert.doesNotMatch(captured, /SEGREDO_|Gerar redação|Código de acesso|Chave da API|hub_test_only_fake_code/i);
+  assert.doesNotMatch(captured, /SEGREDO_|Gerar redação|Código de acesso|Chave da API/i);
 });
 
 test('preserves a successful essay when a later generation fails', async t => {
@@ -431,6 +427,9 @@ test('starts with a compact dark hub in the bottom-right corner and no secondary
   const channels = background.match(/[\d.]+/g).slice(0, 3).map(Number);
   assert.ok(channels.every(channel => channel <= 45), `hub background is ${background}`);
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
+  assert.equal(await control(page, 'api-key').count(), 0);
+  assert.equal(await page.locator('#redator-groq-console >> input[type="password"]').count(), 0);
+  assert.doesNotMatch(script, /PERSONAL_ACCESS_TOKEN|HUB_ACCESS_TOKEN/);
 });
 
 test('genre and word choices open opposite the hub, close immediately, and affect summaries and generation', async t => {
@@ -472,7 +471,7 @@ test('switching functions keeps exactly one secondary pane visible', async t => 
 test('Escape closes the secondary pane and restores focus to the triggering hub button', async t => {
   const page = await mount(t);
   await openPane(page, 'connection');
-  await control(page, 'api-key').focus();
+  await control(page, 'model').focus();
   await page.keyboard.press('Escape');
   await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => document.querySelector('#redator-groq-console').shadowRoot.activeElement?.id), 'open-connection');
@@ -491,7 +490,11 @@ test('saving edited configuration closes its card and updates the hub summaries'
   const page = await mount(t);
   await configure(page, 'Referência revisada pelo usuário para uma nova redação.');
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
-  assert.match(await control(page, 'summary-connection').textContent(), /configur|conect|pront|definid|código|acesso|chave/i);
+  await openPane(page, 'connection');
+  assert.match(await control(page, 'secondary-description').textContent(), /público|sem login|sem código/i);
+  await control(page, 'model').fill('llama-3.1-8b-instant');
+  await control(page, 'save-connection').click();
+  assert.match(await control(page, 'summary-connection').textContent(), /Llama 3\.1.*8B/i);
   assert.match(await control(page, 'summary-source').textContent(), /\d/);
   await openPane(page, 'writing');
   await control(page, 'theme').fill('Leitura e cidadania');
@@ -520,6 +523,9 @@ for (const width of [390, 320]) {
 test('mobile reinjection restores the hub from an open secondary pane and preserves the current draft', async t => {
   const page = await mount(t);
   await page.setViewportSize({ width: 390, height: 844 });
+  await openPane(page, 'connection');
+  await control(page, 'model').fill('llama-3.1-8b-instant');
+  await control(page, 'save-connection').click();
   await configure(page);
   await openPane(page, 'source');
   const draft = 'Rascunho em revisão, ainda sem confirmar o texto de referência.';
@@ -530,7 +536,7 @@ test('mobile reinjection restores the hub from an open secondary pane and preser
   assert.equal(await control(page, 'main-panel').isVisible(), true);
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
   assert.equal(await control(page, 'context').inputValue(), draft);
-  assert.equal(await control(page, 'api-key').inputValue(), FAKE_ACCESS_CODE);
+  assert.equal(await control(page, 'model').inputValue(), 'llama-3.1-8b-instant');
 });
 
 test('upgrading an old panel calls its cleanup once and replaces it with one current hub', async t => {
@@ -565,15 +571,18 @@ test('upgrading an old panel calls its cleanup once and replaces it with one cur
 test('mobile validation errors remain visible in the secondary card and a successful save clears them', async t => {
   const page = await mount(t);
   await page.setViewportSize({ width: 390, height: 844 });
+  await openPane(page, 'source');
+  await control(page, 'context').fill('   ');
+  await control(page, 'save-source').click();
   await control(page, 'generate').click();
   assert.equal(await control(page, 'main-panel').isVisible(), false);
-  assert.equal(await control(page, 'pane-connection').isVisible(), true);
+  assert.equal(await control(page, 'pane-source').isVisible(), true);
   assert.equal(await control(page, 'secondary-status').isVisible(), true);
-  assert.match(await control(page, 'secondary-status').textContent(), /código|acesso|chave/i);
-  await control(page, 'api-key').fill(FAKE_ACCESS_CODE);
-  await control(page, 'save-connection').click();
+  assert.match(await control(page, 'secondary-status').textContent(), /referência|texto|trecho/i);
+  await control(page, 'context').fill('Uma referência válida para a redação pública.');
+  await control(page, 'save-source').click();
   assert.equal(await control(page, 'main-panel').isVisible(), true);
   assert.equal(await control(page, 'status').getAttribute('data-kind'), 'info');
-  await openPane(page, 'connection');
+  await openPane(page, 'source');
   assert.equal(await control(page, 'secondary-status').isVisible(), false);
 });

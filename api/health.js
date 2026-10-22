@@ -18,8 +18,7 @@ module.exports = function health(req, res) {
     return;
   }
   const groq = (process.env.GROQ_API_KEY || '').trim();
-  const token = (process.env.HUB_ACCESS_TOKEN || '').trim();
-  const configured = Boolean(groq && !/\s/.test(groq) && token.length >= 24 && token.length <= 512 && !/\s/.test(token));
+  const configured = Boolean(groq && !/\s/.test(groq));
   res.statusCode = 200;
-  res.end(JSON.stringify({ service: 'redator-groq', configured, provider: 'groq' }));
+  res.end(JSON.stringify({ service: 'redator-groq', configured, provider: 'groq', publicAccess: true }));
 };

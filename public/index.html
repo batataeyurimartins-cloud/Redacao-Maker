@@ -29,6 +29,11 @@
     button:disabled { opacity:.55; cursor:wait; }
     .download { background:#1c1c23; color:#dedee7; font-size:12px; }
     .download:hover { background:#292931; }
+    #copy-loader { width:100%; flex-basis:100%; }
+    #copy-script { background:#1c1c23; border-color:#ffffff24; color:#dedee7; }
+    #copy-script:hover:enabled { background:#292931; }
+    .loader { display:block; padding:12px; margin:12px 0; border:1px solid #ffffff1c; border-radius:9px; background:#0c0c10; color:#bdbdcb; font:10px/1.7 monospace; overflow-wrap:anywhere; }
+    .hint { font-size:10px; line-height:1.7; margin:12px 0 0; }
     a { color:#c6c6d2; text-underline-offset:3px; }
     button:focus-visible,a:focus-visible,textarea:focus-visible { outline:2px solid #d2d2e5; outline-offset:4px; }
     #copy-status { min-height:18px; font-size:11px; line-height:1.6; margin:12px 0 0; color:#bdbdcb; }
@@ -48,30 +53,63 @@
     <header><span class="logo" aria-hidden="true">RG</span><span class="brand">Redator</span><span class="badge">GROQ</span></header>
     <section class="card" aria-labelledby="install-title">
       <h1 id="install-title">Seu hub, na própria página.</h1>
-      <p>Um hub preto e compacto para transformar o texto da página em uma redação. Você continua usando o console do navegador.</p>
+      <p>Um hub preto e compacto para transformar o texto da página em uma redação. Público e sem conta, código de acesso ou senha.</p>
       <ol>
-        <li><span>Copie o script abaixo e abra a página que deseja ler.</span></li>
-        <li><span>Abra a aba <strong>Console</strong> das ferramentas do desenvolvedor, cole o script e pressione Enter.</span></li>
-        <li><span>No hub, abra <strong>Conexão</strong> e informe o código de acesso fornecido pelo responsável pelo projeto. Confira a referência e gere sua redação.</span></li>
+        <li><span>Clique em <strong>Copiar comando</strong> e abra a página que contém o assunto da redação.</span></li>
+        <li><span>Pressione <strong>F12</strong>, abra a aba <strong>Console</strong>, cole o comando e pressione Enter.</span></li>
+        <li><span>No hub, confira <strong>Referência</strong>, escolha o tipo e a extensão e clique em <strong>Gerar redação</strong>.</span></li>
       </ol>
-      <div class="actions"><button id="copy-script" type="button">Copiar script</button><a class="download" href="/redator-groq.js" download="redator-groq.js">Baixar .js</a></div>
+      <div class="actions"><button id="copy-loader" type="button">Copiar comando</button><button id="copy-script" type="button">Copiar script completo</button><a class="download" href="/redator-groq.js" download="redator-groq.js">Baixar .js</a></div>
+      <code class="loader" id="loader-command" aria-label="Comando para colar no console"></code>
+      <p class="hint">Se a página bloquear o carregamento externo, use <strong>Copiar script completo</strong> e cole o conteúdo inteiro no Console.</p>
       <p id="copy-status" role="status" aria-live="polite"></p>
       <label id="manual-label" for="manual-script" hidden>Script para copiar manualmente</label>
       <textarea id="manual-script" readonly spellcheck="false" aria-labelledby="manual-label" hidden></textarea>
     </section>
     <footer>
       <div class="health" id="health-status" role="status">Verificando a configuração do servidor…</div>
-      <p>A chave da Groq fica no servidor. O código de acesso é pessoal; use o hub em páginas confiáveis. <a href="/api/health">Estado da API</a></p>
+      <p>A chave da Groq fica apenas no servidor. Ninguém precisa informá-la no hub. <a href="/api/health">Estado da API</a></p>
     </footer>
   </main>
   <script>
     (() => {
       'use strict';
+      const loaderButton = document.getElementById('copy-loader');
       const copyButton = document.getElementById('copy-script');
       const status = document.getElementById('copy-status');
       const manual = document.getElementById('manual-script');
       const manualLabel = document.getElementById('manual-label');
       const health = document.getElementById('health-status');
+      const publicScriptUrl = new URL('/hub.js',location.origin).href;
+      const loader = `(()=>{const s=document.createElement('script');s.src=${JSON.stringify(publicScriptUrl)};s.onload=()=>s.remove();document.documentElement.appendChild(s)})()`;
+      document.getElementById('loader-command').textContent = loader;
+
+      async function copyText(source,successMessage,manualDescription) {
+        try {
+          if (!navigator.clipboard?.writeText) throw new Error('manual copy');
+          await navigator.clipboard.writeText(source);
+          manual.hidden = true;
+          manualLabel.hidden = true;
+          status.textContent = successMessage;
+        } catch {
+          manual.value = source;
+          manualLabel.textContent = manualDescription;
+          manual.hidden = false;
+          manualLabel.hidden = false;
+          manual.focus();
+          manual.select();
+          status.textContent = 'O navegador bloqueou a cópia automática. Use Ctrl+C ou ⌘C no texto selecionado.';
+        }
+      }
+
+      loaderButton.addEventListener('click',async () => {
+        loaderButton.disabled = true;
+        try {
+          await copyText(loader,'Comando copiado. Cole no Console da página que deseja ler.','Comando para copiar manualmente');
+        } finally {
+          loaderButton.disabled = false;
+        }
+      });
 
       copyButton.addEventListener('click',async () => {
         copyButton.disabled = true;
@@ -82,22 +120,9 @@
           if (!response.ok) throw new Error('script unavailable');
           source = await response.text();
           if (!source.trim()) throw new Error('empty script');
-          if (!navigator.clipboard?.writeText) throw new Error('manual copy');
-          await navigator.clipboard.writeText(source);
-          manual.hidden = true;
-          manualLabel.hidden = true;
-          status.textContent = 'Script copiado. Cole no console da página que deseja ler.';
+          await copyText(source,'Script completo copiado. Cole no Console da página que deseja ler.','Script completo para copiar manualmente');
         } catch {
-          if (source) {
-            manual.value = source;
-            manual.hidden = false;
-            manualLabel.hidden = false;
-            manual.focus();
-            manual.select();
-            status.textContent = 'O navegador bloqueou a cópia automática. Use Ctrl+C ou ⌘C no texto selecionado.';
-          } else {
-            status.textContent = 'Não foi possível carregar o script. Tente novamente ou use Baixar .js.';
-          }
+          status.textContent = 'Não foi possível carregar o script. Tente novamente ou use Baixar .js.';
         } finally {
           copyButton.disabled = false;
         }
@@ -109,9 +134,9 @@
           return response.json();
         })
         .then(data => {
-          if (data?.service !== 'redator-groq' || data?.provider !== 'groq' || typeof data.configured !== 'boolean') throw new Error('unexpected health');
+          if (data?.service !== 'redator-groq' || data?.provider !== 'groq' || typeof data.configured !== 'boolean' || data.publicAccess !== true) throw new Error('unexpected health');
           health.dataset.state = data.configured ? 'ready' : 'pending';
-          health.textContent = data.configured ? 'Servidor configurado para Groq. A geração usa seu código de acesso.' : 'Servidor publicado. Aguardando a configuração das credenciais.';
+          health.textContent = data.configured ? 'Acesso público. Configuração Groq presente no servidor.' : 'Responsável pelo projeto: configure GROQ_API_KEY na Vercel para habilitar a geração.';
         })
         .catch(() => {
           health.dataset.state = 'pending';

@@ -3,9 +3,8 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.2.1';
+  const VERSION = '1.3.0';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
-  const PERSONAL_ACCESS_TOKEN = '';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
   const TIMEOUT_MS = 90000;
@@ -160,7 +159,6 @@
     }
   `);
 
-  const keyInput = element('input', { id:'api-key', type:'password', autoComplete:'off', spellcheck:false, placeholder:'Código privado de acesso ao hub', value:PERSONAL_ACCESS_TOKEN, maxLength:512 });
   const modelInput = element('input', { id:'model', value:'llama-3.3-70b-versatile', autoComplete:'off', spellcheck:false, maxLength:160 });
   const contextInput = element('textarea', { id:'context', spellcheck:false, maxLength:MAX_CONTEXT, 'aria-describedby':'context-help context-count' });
   const themeInput = element('input', { id:'theme', placeholder:'Opcional: se vazio, inferir a partir do texto', maxLength:300 });
@@ -181,12 +179,12 @@
   const cancel = element('button', { id:'cancel', type:'button', hidden:true }, 'Cancelar');
   const copy = element('button', { id:'copy', type:'button', disabled:true }, 'Copiar');
   const download = element('button', { id:'download', type:'button', disabled:true }, 'Baixar .txt');
-  const close = element('button', { id:'close', type:'button', className:'icon-button', 'aria-label':'Fechar e apagar o código de acesso', title:'Fechar' }, icon('close'));
+  const close = element('button', { id:'close', type:'button', className:'icon-button', 'aria-label':'Fechar hub', title:'Fechar' }, icon('close'));
   const minimize = element('button', { id:'minimize', type:'button', className:'icon-button', 'aria-label':'Recolher hub', title:'Recolher', 'aria-expanded':'true', 'aria-controls':'panel-body' }, '−');
   const summaries = {};
   const triggers = {};
   const paneInfo = {
-    connection:['Conexão','Acesso à API integrada da Groq.'],
+    connection:['Modelo da Groq','Uso público, sem login ou código de acesso.'],
     source:['Texto de referência','Escolha a origem e confira o conteúdo.'],
     genre:['Tipo de redação','Escolheu, pronto. A opção volta para o hub.'],
     words:['Extensão aproximada','Qual o tamanho da sua redação?'],
@@ -199,13 +197,13 @@
     return triggers[name];
   }
   const body = element('div', { id:'panel-body' }, [
-    element('div', { className:'settings' }, [setting('connection','Conexão'),setting('source','Referência'),setting('genre','Tipo'),setting('words','Extensão'),setting('writing','Tema'),setting('result','Redação')]),
+    element('div', { className:'settings' }, [setting('connection','Modelo'),setting('source','Referência'),setting('genre','Tipo'),setting('words','Extensão'),setting('writing','Tema'),setting('result','Redação')]),
     element('div', { className:'generate-row' }, [generate,cancel]),status
   ]);
   const main = element('section', { id:'main-panel', className:'card main', role:'region', 'aria-label':'Redator Groq', 'data-secondary-open':'false' }, [
     element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Redator'),element('span',{ className:'badge' },'GROQ')]),minimize,close]),body
   ]);
-  const saveConnection = element('button', { id:'save-connection', type:'button', className:'primary full' }, 'Usar API integrada');
+  const saveConnection = element('button', { id:'save-connection', type:'button', className:'primary full' }, 'Usar este modelo');
   const saveSource = element('button', { id:'save-source', type:'button', className:'primary full' }, 'Usar este texto');
   const saveWriting = element('button', { id:'save-writing', type:'button', className:'primary full' }, 'Usar estas instruções');
   const genreOptions = [
@@ -221,10 +219,8 @@
   }
   const panes = {
     connection:element('div',{ id:'pane-connection', className:'pane', hidden:true },[
-      element('label',{ htmlFor:'api-key' },'Código de acesso'),keyInput,
-      element('small',{},'O código autoriza o uso do hub. A chave da Groq fica no servidor. Use em páginas confiáveis.'),
       element('label',{ htmlFor:'model' },'Modelo'),modelInput,
-      element('small',{},'Modelos: llama-3.3-70b-versatile ou llama-3.1-8b-instant.'),saveConnection
+      element('small',{},'Modelos: llama-3.3-70b-versatile ou llama-3.1-8b-instant. A API é pública; a chave da Groq fica no servidor.'),saveConnection
     ]),
     source:element('div',{ id:'pane-source', className:'pane', hidden:true },[
       element('div',{ className:'row' },[capturePage,captureSelection]),
@@ -257,7 +253,7 @@
   document.documentElement.append(host);
 
   function syncSummaries() {
-    summaries.connection.textContent = keyInput.value.trim() ? 'Código definido' : 'Vincular acesso';
+    summaries.connection.textContent = ({ 'llama-3.3-70b-versatile':'Llama 3.3 · 70B', 'llama-3.1-8b-instant':'Llama 3.1 · 8B' })[modelInput.value.trim()] || modelInput.value.trim() || 'Selecionar';
     summaries.source.textContent = contextInput.value.trim() ? `${sourceKind} · ${contextInput.value.length.toLocaleString('pt-BR')} car.` : 'Adicionar texto';
     summaries.genre.textContent = genreOptions.find(([value]) => value === genreInput.value)?.[1] || 'Argumentativa';
     summaries.words.textContent = `${wordsInput.value} palavras`;
@@ -313,7 +309,7 @@
   }
 
   function setBusy(busy) {
-    for (const control of [keyInput,modelInput,contextInput,themeInput,genreInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,saveConnection,saveSource,saveWriting,...shadow.querySelectorAll('[data-choice]')]) {
+    for (const control of [modelInput,contextInput,themeInput,genreInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,saveConnection,saveSource,saveWriting,...shadow.querySelectorAll('[data-choice]')]) {
       control.disabled = busy;
     }
     cancel.hidden = !busy;
@@ -430,21 +426,20 @@
   function httpError(response, payload) {
     const messages = {
       400:'A API recusou os parâmetros. Confira o modelo e o texto de referência.',
-      401:'Código de acesso inválido. Confira o código privado do hub em Conexão.',
+      401:'O servidor recusou a solicitação. Recarregue o script ou tente novamente mais tarde.',
       402:'Sua conta Groq precisa de saldo ou de uma alteração no plano.',
-      403:'A API negou o acesso. Confira as permissões do hub.',
+      403:'A API negou o acesso à solicitação. Tente novamente mais tarde.',
       404:'Modelo ou recurso não encontrado. Confira o identificador do modelo.',
       413:'O texto excedeu o limite aceito pela Groq. Reduza o texto de referência.',
       429:'Limite de uso atingido. Aguarde antes de tentar novamente.',
-      503:'A API ainda precisa ser configurada. Confira GROQ_API_KEY e HUB_ACCESS_TOKEN na Vercel.',
+      503:'O administrador ainda precisa configurar GROQ_API_KEY na Vercel.',
       504:'A Groq demorou para responder. Tente novamente em instantes.'
     };
     let message = messages[response.status] || (response.status >= 500 ? 'A Groq está indisponível no momento. Tente novamente em instantes.' : 'Não foi possível concluir a solicitação à Groq.');
     const retry = response.headers.get('retry-after');
     if (response.status === 429 && retry && /^\d+(\.\d+)?$/.test(retry)) message += ` Aguarde cerca de ${Math.ceil(Number(retry))} segundos.`;
     if ([400,404,502,503].includes(response.status) && typeof payload?.error?.message === 'string') {
-      const token = keyInput.value.trim();
-      const detail = (token ? payload.error.message.split(token).join('[código omitido]') : payload.error.message).slice(0,350);
+      const detail = payload.error.message.slice(0,350);
       message += ` Detalhe: ${detail}`;
     }
     return new Error(`${message} (HTTP ${response.status})`);
@@ -452,13 +447,6 @@
 
   async function generateEssay() {
     if (activeRequest || closed) return;
-    const accessToken = keyInput.value.trim();
-    if (!accessToken || /\s/.test(accessToken)) {
-      setStatus('Informe o código de acesso privado do hub, sem espaços. A chave Groq é configurada no servidor.','error');
-      openPane('connection');
-      keyInput.focus();
-      return;
-    }
     if (!contextInput.value.trim()) {
       setStatus('Leia a página, selecione um trecho ou cole um texto de referência antes de gerar.','error');
       openPane('source');
@@ -488,7 +476,7 @@
     try {
       const response = await fetch(API_URL, {
         method:'POST',
-        headers:{ 'Authorization':`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+        headers:{ 'Content-Type':'application/json' },
         credentials:'omit',
         referrerPolicy:'no-referrer',
         signal:request.controller.signal,
@@ -545,7 +533,6 @@
       clearTimeout(activeRequest.timer);
       activeRequest.controller.abort();
     }
-    keyInput.value = '';
     contextInput.value = '';
     resultInput.value = '';
     savedSelection = '';
@@ -570,11 +557,6 @@
     closePane();
   });
   saveConnection.addEventListener('click',() => {
-    if (/\s/.test(keyInput.value.trim())) {
-      keyInput.setCustomValidity('O código de acesso não pode conter espaços.');
-      keyInput.reportValidity();
-      return;
-    }
     if (!modelInput.value.trim()) {
       modelInput.setCustomValidity('Informe o identificador do modelo.');
       modelInput.reportValidity();
@@ -610,7 +592,7 @@
     else setStatus('Selecione um texto fora do painel e clique em Ler seleção. Você também pode colar o texto manualmente.','warning');
   });
   contextInput.addEventListener('input',() => { sourceKind = 'Manual'; updateCounter(); });
-  for (const input of [keyInput,modelInput,themeInput,instructionsInput]) input.addEventListener('input',() => {
+  for (const input of [modelInput,themeInput,instructionsInput]) input.addEventListener('input',() => {
     input.setCustomValidity('');
     syncSummaries();
   });
