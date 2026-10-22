@@ -128,6 +128,7 @@ test('anonymous backend builds its own Groq prompt from normalized essay setting
   assert.equal(sent.body.stream, false);
   assert.equal(sent.body.reasoning_effort, 'low');
   assert.equal(sent.body.include_reasoning, false);
+  assert.deepEqual(sent.body.response_format, { type: 'json_object' });
   assert.equal(sent.body.messages[0].role, 'system');
   assert.equal(sent.body.messages[1].role, 'user');
   const prompt = JSON.stringify(sent.body.messages);
@@ -136,15 +137,96 @@ test('anonymous backend builds its own Groq prompt from normalized essay setting
   assert.match(prompt, /bibliotecas públicas/);
   assert.match(prompt, /Inclusão digital e cidadania/);
   assert.match(prompt, /não confiável|comandos|instruções/i);
+  assert.match(sent.body.messages[0].content, /JSON.*"title".*"essay"/);
   assert.doesNotMatch(prompt, /CLIENT_SYSTEM_OVERRIDE_MARKER/);
   assert.ok(!JSON.stringify(sent.body).includes(API_KEY));
   assert.equal(res.body.choices[0].message.content.trim(), 'Redação recebida com segurança.');
+  assert.equal(res.body.title, validInput.theme);
   assert.equal(res.body.choices[0].finish_reason, 'stop');
   assert.equal(res.body.model, DEFAULT_MODEL);
   assert.ok(!JSON.stringify(res.body).includes(API_KEY));
   assert.doesNotMatch(JSON.stringify(res.body), /PRIVATE_REASONING_MARKER_NOT_FOR_CLIENT/);
   assert.equal(res.body.choices[0].message.reasoning, undefined);
 });
+
+test('returns the generated title separately and preserves essay paragraphs and truncation metadata', async () => {
+  const essay = 'A inclusão digital amplia a participação dos cidadãos.\n\nAs bibliotecas públicas podem oferecer acesso e orientação.\n\nCabe ao poder público ampliar esse trabalho.';
+  global.fetch = async () => responseFor(completion(JSON.stringify({
+    title: '  Inclusão digital:\n caminhos para a cidadania  ',
+    essay: `  ${essay}  `,
+  }), 'length'));
+  const { res } = await invoke({ body: { ...validInput, model: 'openai/gpt-oss-120b' } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.title, 'Inclusão digital: caminhos para a cidadania');
+  assert.equal(res.body.choices[0].message.content, essay);
+  assert.doesNotMatch(res.body.choices[0].message.content, /Inclusão digital: caminhos/);
+  assert.equal(res.body.choices[0].finish_reason, 'length');
+  assert.equal(res.body.model, 'openai/gpt-oss-120b');
+});
+
+test('legacy plain text keeps the complete first paragraph and uses the requested theme as title', async () => {
+  const firstParagraph = 'A inclusão digital transforma o acesso à educação e à cidadania, mas exige políticas públicas que enfrentem as desigualdades de infraestrutura e a dificuldade de aprender a usar as ferramentas disponíveis.';
+  const essay = `${firstParagraph}\n\nBibliotecas públicas podem contribuir para esse processo.`;
+  global.fetch = async () => responseFor(completion(essay));
+  const { res } = await invoke();
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.title, validInput.theme);
+  assert.equal(res.body.choices[0].message.content, essay);
+});
+
+test('legacy plain text without a theme gets a short fallback title without changing its body', async () => {
+  const essay = 'Uma reflexão completa sobre o acesso à educação.\n\nA participação coletiva amplia as possibilidades.';
+  global.fetch = async () => responseFor(completion(essay));
+  const { res } = await invoke({ body: { ...validInput, theme: '' } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.title, 'Reflexões sobre o tema');
+  assert.equal(res.body.choices[0].message.content, essay);
+});
+
+test('redacts the server key in generated title and essay before limiting title length', async () => {
+  global.fetch = async () => responseFor(completion(JSON.stringify({
+    title: `${'A'.repeat(190)} ${API_KEY} conclusão`,
+    essay: `A referência menciona ${API_KEY}.\n\nO argumento cita ${API_KEY} novamente.`,
+  })));
+  const { res } = await invoke();
+  assert.equal(res.statusCode, 200);
+  assert.equal(Array.from(res.body.title).length, 200);
+  assert.ok(!JSON.stringify(res.body).includes(API_KEY));
+  assert.ok(!JSON.stringify(res.body).includes(API_KEY.slice(0, 10)));
+  assert.equal(res.body.choices[0].message.content, 'A referência menciona [segredo omitido].\n\nO argumento cita [segredo omitido] novamente.');
+});
+
+test('redacts legacy essay text and its theme-derived title', async () => {
+  global.fetch = async () => responseFor(completion(`Uma redação com ${API_KEY}.`));
+  const { res } = await invoke({ body: { ...validInput, theme: `Tema ${API_KEY}` } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.title, 'Tema [segredo omitido]');
+  assert.equal(res.body.choices[0].message.content, 'Uma redação com [segredo omitido].');
+  assert.ok(!JSON.stringify(res.body).includes(API_KEY));
+});
+
+for (const [label, content] of [
+  ['malformed JSON object', '{"title":"Um título","essay":'],
+  ['missing title', JSON.stringify({ essay: 'Uma redação.' })],
+  ['missing essay', JSON.stringify({ title: 'Um título' })],
+  ['empty title', JSON.stringify({ title: '  ', essay: 'Uma redação.' })],
+  ['empty essay', JSON.stringify({ title: 'Um título', essay: '\n ' })],
+  ['non-string title', JSON.stringify({ title: 42, essay: 'Uma redação.' })],
+  ['non-string essay', JSON.stringify({ title: 'Um título', essay: ['Uma redação.'] })],
+  ['JSON array', JSON.stringify([{ title: 'Um título', essay: 'Uma redação.' }])],
+  ['JSON scalar', JSON.stringify('Uma redação.')],
+  ['fenced JSON', '```json\n{"title":"Um título","essay":"Uma redação."}\n```'],
+]) {
+  test(`rejects ${label} instead of inserting structured output into the essay`, async () => {
+    global.fetch = async () => responseFor(completion(content));
+    const { res } = await invoke();
+    assert.equal(res.statusCode, 502);
+    assert.equal(res.body.error.code, 'invalid_provider_response');
+    assert.equal(res.body.title, undefined);
+    assert.equal(res.body.choices, undefined);
+    assertSanitized(res);
+  });
+}
 
 test('CORS preflight is public but never invokes the provider or exposes credentials', async () => {
   let calls = 0;

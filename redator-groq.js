@@ -3,7 +3,7 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.4.0';
+  const VERSION = '1.5.0';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
@@ -174,6 +174,7 @@
   const wordsInput = element('select', { id:'words', hidden:true, 'aria-label':'Extensão aproximada' }, [250,350,500,700].map(n => element('option', { value:String(n), selected:n === 350 }, `${n} palavras`)));
   const instructionsInput = element('textarea', { id:'instructions', maxLength:2000, placeholder:'Opcional: tom, público, argumentos a desenvolver…' });
   const resultInput = element('textarea', { id:'result', readOnly:true, placeholder:'A redação aparecerá aqui.', 'aria-label':'Redação gerada' });
+  const resultTitleInput = element('input', { id:'result-title', readOnly:true, 'aria-label':'Título gerado' });
   const status = element('p', { id:'status', role:'status', 'aria-live':'polite', 'aria-atomic':'true' }, 'Preparando leitura da página…');
   const counter = element('small', { id:'context-count', className:'counter' });
   const capturePage = element('button', { id:'capture-page', type:'button' }, 'Ler página');
@@ -185,6 +186,9 @@
   const connectionHelp = element('a', { id:'connection-help', href:`${SERVICE_ORIGIN}/connection.html`, target:'_blank', rel:'noopener noreferrer', hidden:true }, 'Abrir hub em outra janela');
   const copy = element('button', { id:'copy', type:'button', disabled:true }, 'Copiar');
   const download = element('button', { id:'download', type:'button', disabled:true }, 'Baixar .txt');
+  const fillPage = element('button', { id:'fill-page', type:'button', className:'full', disabled:true }, 'Preencher página');
+  const pickTitle = element('button', { id:'pick-title', type:'button', disabled:true }, 'Escolher título');
+  const pickEssay = element('button', { id:'pick-essay', type:'button', disabled:true }, 'Escolher redação');
   const close = element('button', { id:'close', type:'button', className:'icon-button', 'aria-label':'Fechar hub', title:'Fechar' }, icon('close'));
   const minimize = element('button', { id:'minimize', type:'button', className:'icon-button', 'aria-label':'Recolher hub', title:'Recolher', 'aria-expanded':'true', 'aria-controls':'panel-body' }, '−');
   const summaries = {};
@@ -241,9 +245,11 @@
       element('small',{},'Sem tema? O assunto será identificado pelo texto de referência.'),saveWriting
     ]),
     result:element('div',{ id:'pane-result', className:'pane', hidden:true },[
+      element('label',{ htmlFor:'result-title' },'Título gerado'),resultTitleInput,
       element('label',{ htmlFor:'result' },'Redação gerada'),resultInput,
       element('small',{ id:'result-count', className:'counter' },'0 palavras'),
-      element('div',{ className:'row actions' },[copy,download])
+      element('div',{ className:'row actions' },[copy,download]),fillPage,
+      element('div',{ className:'row actions' },[pickTitle,pickEssay])
     ])
   };
   const secondaryTitle = element('h2',{ id:'secondary-title' });
@@ -257,6 +263,361 @@
   const announcement = element('span',{ className:'sr-only', role:'status', 'aria-live':'polite', 'aria-atomic':'true' });
   shadow.append(style,main,secondary,announcement);
   document.documentElement.append(host);
+
+  // BEGIN_PAGE_FILL
+  /** Local, conservative form discovery and filling; never submits a form. */
+  function createPageFill({ excludeRoot, onStatus } = {}) {
+    const pinned = { title: null, essay: null };
+    const fieldSelector = 'input,textarea,[contenteditable],[role="textbox"]';
+    let disposed = false;
+    let pendingPick = null;
+
+    const normalize = value => String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const titleCue = /\b(titulo|title)\b/;
+    const essayCue = /\b(redacao|essay|composition|desenvolvimento)\b|\b(seu|sua|your) (texto|redacao|text|essay)\b|\b(corpo do texto|texto da resposta|escreva (aqui|seu texto)|digite seu texto)\b/;
+    const unrelated = /\b(referencia|reference|apoio|proposta|enunciado|prompt|contexto|context|instrucao|instrucoes|motivador|motivadores|pesquisa|pesquisar|search|busca|email|e mail|senha|password|usuario|username|login|telefone|phone|comentario|comment|mensagem|message|chat|feedback|observacao|tema|theme|subject)\b|\bnome completo\b/;
+    const referenceHeading = /\b(texto de apoio|textos de apoio|proposta|enunciado|referencia|instrucoes|prompt|contexto)\b/;
+    const parentOf = node => node?.parentElement || node?.getRootNode?.()?.host || null;
+    function notify(result) { try { onStatus?.(result); } catch (_) {} }
+
+    function excluded(node) {
+      for (let current = node; current; current = parentOf(current)) {
+        if (current === excludeRoot || current.id === 'redator-groq-console') return true;
+      }
+      return false;
+    }
+
+    function editable(node, kind) {
+      if (!node?.ownerDocument || !node.isConnected || excluded(node)) return false;
+      const tag = node.tagName?.toLowerCase();
+      if (tag === 'input') {
+        if (kind === 'essay' || !['text', ''].includes((node.getAttribute('type') || 'text').toLowerCase())) return false;
+      } else if (tag !== 'textarea' && !node.isContentEditable) return false;
+      if (node.disabled || node.readOnly || node.matches?.(':disabled')) return false;
+      try {
+        for (let context = node; context; context = context.ownerDocument.defaultView.frameElement) {
+          if (!context.getClientRects().length || excluded(context)) return false;
+          for (let current = context; current; current = parentOf(current)) {
+            if (current.hidden || current.inert || current.getAttribute?.('aria-hidden') === 'true' ||
+                current.getAttribute?.('aria-disabled') === 'true' || current.getAttribute?.('aria-readonly') === 'true') return false;
+            const style = current.ownerDocument.defaultView.getComputedStyle(current);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
+          }
+        }
+      } catch (_) { return false; }
+      return true;
+    }
+
+    function fieldFrom(node) {
+      let element = node?.nodeType === 1 ? node : node?.parentElement;
+      if (element?.tagName === 'LABEL' && element.control) element = element.control;
+      for (; element; element = parentOf(element)) {
+        if (element.matches?.('input,textarea')) return element;
+        if (element.isContentEditable) {
+          while (element.parentElement?.isContentEditable) element = element.parentElement;
+          return element;
+        }
+        if (element.getAttribute?.('contenteditable') === 'false') return null;
+      }
+      return null;
+    }
+
+    // Include open shadow roots and accessible editor frames, without touching cross-origin frames.
+    function collect() {
+      const fields = new Set();
+      const documents = new Set();
+      const seen = new Set();
+      const pending = [{ root: document, depth: 0 }];
+      let scanned = 0;
+      while (pending.length && scanned < 30000) {
+        const { root, depth } = pending.shift();
+        if (seen.has(root)) continue;
+        seen.add(root);
+        if (root.nodeType === 9) documents.add(root);
+        for (const element of root.querySelectorAll('*')) {
+          if (++scanned > 30000) break;
+          if (excluded(element)) continue;
+          if (element.matches(fieldSelector)) {
+            const field = fieldFrom(element);
+            if (field && editable(field)) fields.add(field);
+          }
+          if (element.shadowRoot) pending.push({ root: element.shadowRoot, depth });
+          if (element.tagName === 'IFRAME' && depth < 3 && element.getClientRects().length) {
+            try {
+              if (element.contentDocument?.documentElement) pending.push({ root: element.contentDocument, depth: depth + 1 });
+            } catch (_) {}
+          }
+        }
+      }
+      return { fields: [...fields], documents: [...documents] };
+    }
+
+    function labelText(node) {
+      if (!node) return '';
+      const parts = [];
+      const walker = node.ownerDocument.createTreeWalker(node, 4);
+      let text;
+      while ((text = walker.nextNode()) && parts.join(' ').length < 300) {
+        if (!text.parentElement?.closest('input,textarea,[contenteditable]')) parts.push(text.textContent);
+      }
+      return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+    }
+
+    function describe(element) {
+      const root = element.getRootNode();
+      const labels = [...(element.labels || [])].map(labelText);
+      if (element.closest('label')) labels.push(labelText(element.closest('label')));
+      for (const id of (element.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)) {
+        const node = root.getElementById?.(id) || element.ownerDocument.getElementById(id);
+        labels.push(labelText(node));
+      }
+      labels.push(element.getAttribute('aria-label') || '', element.getAttribute('placeholder') || '', element.getAttribute('data-placeholder') || '');
+      const group = element.closest('.MuiFormControl-root,.form-group,[data-field]');
+      if (!labels.some(Boolean) && group) {
+        for (const label of group.querySelectorAll('label')) labels.push(labelText(label));
+      }
+      let heading = '';
+      for (let current = element, level = 0; current && level < 3 && !heading; current = current.parentElement, level++) {
+        const previous = current.previousElementSibling;
+        if (previous?.matches('label,h1,h2,h3,h4,h5,h6,legend')) heading = labelText(previous);
+        else if (previous?.matches('header')) heading = labelText(previous.querySelector('h1,h2,h3,h4,h5,h6'));
+      }
+      const attrs = ['name', 'id', 'title', 'data-testid', 'data-field'].map(name => element.getAttribute(name) || '').join(' ');
+      const direct = normalize(labels.join(' ') + ' ' + attrs);
+      return {
+        element, direct, heading: normalize(heading),
+        label: (labels.find(Boolean) || heading || element.getAttribute('name') || element.id || element.tagName).slice(0, 100),
+        form: element.form || element.closest('form,[role="form"]'),
+        titleScore: titleCue.test(direct) ? 120 : titleCue.test(normalize(heading)) ? 95 : 0,
+        essayScore: essayCue.test(direct) ? 120 : essayCue.test(normalize(heading)) ? 95 : 0
+      };
+    }
+
+    function detect(allowDisposed = false) {
+      if (disposed && !allowDisposed) return { title: null, essay: null, status: 'not-found', ambiguous: { title: false, essay: false }, candidates: { title: [], essay: [] }, message: 'Preenchimento encerrado.' };
+      for (const kind of ['title', 'essay']) if (pinned[kind] && !editable(pinned[kind], kind)) pinned[kind] = null;
+      const descriptions = collect().fields.map(describe).filter(item => !unrelated.test(item.direct) && !referenceHeading.test(item.heading));
+      const titles = descriptions.filter(item => item.titleScore && item.element !== pinned.essay && editable(item.element, 'title'));
+      let essays = descriptions.filter(item => item.essayScore && !item.titleScore && item.element !== pinned.title && editable(item.element, 'essay'));
+      const chosenTitle = pinned.title || (titles.length === 1 ? titles[0].element : null);
+      const titleForm = chosenTitle && (chosenTitle.form || chosenTitle.closest('form,[role="form"]'));
+      if (!essays.length && titleForm) {
+        const paired = descriptions.filter(item => item.element !== chosenTitle && item.form === titleForm &&
+          !item.titleScore && editable(item.element, 'essay') &&
+          (item.element.tagName !== 'TEXTAREA' || item.element.rows >= 4 || item.element.getBoundingClientRect().height >= 90));
+        if (paired.length === 1) essays = [{ ...paired[0], essayScore: 85 }];
+      }
+      const candidates = {
+        title: titles.map(item => ({ element: item.element, label: item.label, score: item.titleScore })),
+        essay: essays.map(item => ({ element: item.element, label: item.label, score: item.essayScore }))
+      };
+      const title = pinned.title || (titles.length === 1 ? titles[0].element : null);
+      const essay = pinned.essay || (essays.length === 1 ? essays[0].element : null);
+      const ambiguous = { title: !pinned.title && titles.length > 1, essay: !pinned.essay && essays.length > 1 };
+      const status = ambiguous.title || ambiguous.essay ? 'ambiguous' : title && essay ? 'ready' : title || essay ? 'partial' : 'not-found';
+      const message = status === 'ready' ? 'Título e redação encontrados na página.' : status === 'ambiguous'
+        ? 'Há mais de um campo possível. Escolha o campo na página.' : status === 'partial'
+          ? `${essay ? 'Redação encontrada; título' : 'Título encontrado; redação'} sem campo identificado.`
+          : 'Campos de redação não encontrados. Você pode escolhê-los na página.';
+      return { title, essay, status, ambiguous, candidates, message };
+    }
+
+    function setTargets(targets = {}) {
+      for (const kind of ['title', 'essay']) {
+        if (!Object.prototype.hasOwnProperty.call(targets, kind)) continue;
+        const node = targets[kind];
+        if (node != null && !editable(node, kind)) throw new TypeError(`Campo de ${kind === 'title' ? 'título' : 'redação'} indisponível.`);
+        const other = kind === 'title' ? 'essay' : 'title';
+        if (node && node === (Object.prototype.hasOwnProperty.call(targets, other) ? targets[other] : pinned[other])) throw new TypeError('Escolha campos diferentes para título e redação.');
+      }
+      for (const kind of ['title', 'essay']) if (Object.prototype.hasOwnProperty.call(targets, kind)) pinned[kind] = targets[kind] || null;
+      return detect();
+    }
+
+    function dispatchInput(element, text) {
+      const win = element.ownerDocument.defaultView;
+      let event;
+      try { event = new win.InputEvent('input', { bubbles: true, composed: true, inputType: 'insertReplacementText', data: text }); }
+      catch (_) { event = new win.Event('input', { bubbles: true, composed: true }); }
+      element.dispatchEvent(event);
+      element.dispatchEvent(new win.Event('change', { bubbles: true, composed: true }));
+    }
+
+    const canonical = value => String(value || '').replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ').trim();
+    const read = element => element.matches('input,textarea') ? element.value : element.innerText || element.textContent || '';
+    const escapeText = text => text.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    function publicEditor(element, text) {
+      const local = element.ownerDocument.defaultView;
+      for (const win of [...new Set([local, window])]) {
+        try {
+          const editors = win.tinymce?.get?.();
+          const editor = Array.isArray(editors) && editors.find(item => item.getBody?.() === element);
+          if (editor?.setContent) {
+            editor.setContent(text.split(/\n\s*\n/).map(paragraph => `<p>${escapeText(paragraph).replace(/\n/g, '<br>')}</p>`).join(''));
+            editor.fire?.('input'); editor.fire?.('change');
+            return true;
+          }
+        } catch (_) {}
+        try {
+          const editor = win.Quill?.find?.(element);
+          if (editor?.root === element && typeof editor.setText === 'function') { editor.setText(text, 'user'); return true; }
+        } catch (_) {}
+      }
+      return false;
+    }
+
+    function write(element, text) {
+      const doc = element.ownerDocument;
+      const win = doc.defaultView;
+      if (element.matches('input,textarea')) {
+        const prototype = element.tagName === 'TEXTAREA' ? win.HTMLTextAreaElement.prototype : win.HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(prototype, 'value').set.call(element, text);
+        dispatchInput(element, text);
+        return;
+      }
+      if (publicEditor(element, text)) { dispatchInput(element, text); return; }
+      const active = doc.activeElement;
+      const selection = doc.getSelection();
+      const ranges = [];
+      for (let i = 0; selection && i < selection.rangeCount; i++) ranges.push(selection.getRangeAt(i).cloneRange());
+      try {
+        element.focus({ preventScroll: true });
+        const range = doc.createRange(); range.selectNodeContents(element);
+        selection?.removeAllRanges(); selection?.addRange(range);
+        // Native editing lets rich editors observe a normal browser editing transaction.
+        const inserted = doc.execCommand?.('insertText', false, text);
+        if (!inserted || canonical(read(element)) !== canonical(text)) {
+          const fragment = doc.createDocumentFragment();
+          for (const paragraph of text.split(/\n\s*\n/)) {
+            const p = doc.createElement('p');
+            paragraph.split('\n').forEach((line, index) => { if (index) p.append(doc.createElement('br')); p.append(doc.createTextNode(line)); });
+            fragment.append(p);
+          }
+          element.replaceChildren(fragment);
+          dispatchInput(element, text);
+        }
+      } finally {
+        if (active?.isConnected && active !== element) active.focus?.({ preventScroll: true });
+        if (selection) {
+          selection.removeAllRanges();
+          for (const range of ranges) try { selection.addRange(range); } catch (_) {}
+        }
+      }
+    }
+
+    async function fill({ title, essay, signal } = {}) {
+      const result = { filledTitle: false, filledEssay: false, status: 'invalid', message: '', errors: [] };
+      const writes = [];
+      const stopped = () => disposed || signal?.aborted;
+      const settle = () => new Promise(resolve => {
+        const timer = setTimeout(resolve, 60);
+        window.requestAnimationFrame?.(() => window.requestAnimationFrame(() => { clearTimeout(timer); resolve(); }));
+      });
+      async function rollback() {
+        for (const entry of [...writes].reverse()) {
+          try {
+            const target = editable(entry.target, entry.kind) ? entry.target : detect(true)[entry.kind];
+            // A user edit made after our write always takes precedence over restoration.
+            if (!editable(target, entry.kind) || entry.written == null || read(target) !== entry.written) continue;
+            write(target, entry.previous);
+            await settle();
+          } catch (_) {}
+        }
+        result.status = 'cancelled';
+        result.message = 'Preenchimento cancelado.';
+        return result;
+      }
+      if (stopped()) return rollback();
+      if (typeof essay !== 'string' || !essay.trim()) { result.message = 'A redação está vazia; nenhum campo foi preenchido.'; return result; }
+      let detection = detect();
+      if (detection.ambiguous.title || detection.ambiguous.essay) {
+        result.status = 'ambiguous'; result.message = detection.message; return result;
+      }
+      // Separate React renders: both onChange handlers may spread the same parent state.
+      for (const [kind, text] of [['title', typeof title === 'string' ? title.trim() : ''], ['essay', essay.trim()]]) {
+        if (stopped()) return rollback();
+        detection = detect();
+        if (detection.ambiguous.title || detection.ambiguous.essay) break;
+        const target = detection[kind];
+        if (!target || !text) continue;
+        if (!editable(target, kind)) { result.errors.push(`O campo de ${kind === 'title' ? 'título' : 'redação'} ficou indisponível.`); continue; }
+        const max = target.matches('input,textarea') ? target.maxLength : -1;
+        if (max >= 0 && text.length > max) { result.errors.push(`O campo de ${kind === 'title' ? 'título' : 'redação'} aceita até ${max} caracteres; o texto foi preservado no hub.`); continue; }
+        try {
+          if (stopped()) return rollback();
+          const entry = { kind, target, text, previous: read(target), written: null };
+          writes.push(entry);
+          write(target, text);
+          if (canonical(read(target)) === canonical(text)) entry.written = read(target);
+          await settle();
+          if (stopped()) return rollback();
+        }
+        catch (_) { result.errors.push(`Não foi possível preencher o campo de ${kind === 'title' ? 'título' : 'redação'}.`); }
+      }
+      if (stopped()) return rollback();
+      if (writes.length) {
+        detection = detect();
+        for (const { kind, text } of writes) {
+          const target = detection[kind];
+          if (editable(target, kind) && canonical(read(target)) === canonical(text)) result[kind === 'title' ? 'filledTitle' : 'filledEssay'] = true;
+          else result.errors.push(`A página não manteve o ${kind === 'title' ? 'título' : 'texto'} preenchido. Escolha outro campo ou copie a redação.`);
+        }
+      }
+      result.status = result.filledTitle && result.filledEssay ? 'filled' : result.filledTitle || result.filledEssay ? 'partial' : result.errors.length ? 'error' : detection.status;
+      result.message = result.filledTitle && result.filledEssay ? 'Título e redação preenchidos na página. Revise antes de enviar.'
+        : result.filledEssay ? 'Redação preenchida. O título continua disponível no hub.'
+          : result.filledTitle ? 'Título preenchido. Escolha o campo de redação ou copie o texto.'
+            : result.errors[0] || detection.message;
+      if ((result.filledTitle || result.filledEssay) && result.errors.length) result.message += ` ${result.errors[0]}`;
+      return result;
+    }
+
+    function pick(kind) {
+      if (!['title', 'essay'].includes(kind)) return Promise.reject(new TypeError('Campo inválido.'));
+      if (disposed) return Promise.resolve(null);
+      cancelPick();
+      return new Promise(resolve => {
+        const { documents } = collect();
+        const listeners = [];
+        function finish(element) {
+          for (const [doc, event, handler] of listeners) doc.removeEventListener(event, handler, true);
+          pendingPick = null;
+          if (element) setTargets({ [kind]: element });
+          notify(element ? { status: 'selected', message: `Campo de ${kind === 'title' ? 'título' : 'redação'} escolhido.` } : { status: 'cancelled', message: 'Escolha de campo cancelada.' });
+          resolve(element);
+        }
+        const cancel = () => finish(null);
+        pendingPick = cancel;
+        function click(event) {
+          if (event.composedPath().some(node => node === excludeRoot || node?.id === 'redator-groq-console')) return;
+          event.preventDefault(); event.stopImmediatePropagation();
+          const target = fieldFrom(event.composedPath()[0]);
+          if (!editable(target, kind) || target === pinned[kind === 'title' ? 'essay' : 'title']) {
+            notify({ status: 'picking', message: 'Clique em um campo de texto editável e diferente do outro campo. Esc cancela.' }); return;
+          }
+          finish(target);
+        }
+        function pointer(event) {
+          if (!event.composedPath().some(node => node === excludeRoot || node?.id === 'redator-groq-console')) { event.preventDefault(); event.stopImmediatePropagation(); }
+        }
+        function key(event) { if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); cancel(); } }
+        for (const doc of documents) for (const [event, handler] of [['click', click], ['pointerdown', pointer], ['keydown', key]]) {
+          doc.addEventListener(event, handler, true); listeners.push([doc, event, handler]);
+        }
+        notify({ status: 'picking', message: `Clique no campo de ${kind === 'title' ? 'título' : 'redação'} na página. Esc cancela.` });
+      });
+    }
+
+    function cancelPick() { pendingPick?.(); }
+    function dispose() { disposed = true; cancelPick(); pinned.title = null; pinned.essay = null; }
+    return { detect, fill, setTargets, pick, cancelPick, dispose };
+  }
+  // END_PAGE_FILL
+
+  const pageFill = createPageFill({ excludeRoot:host, onStatus:notice => {
+    if (!closed && notice?.message) setStatus(notice.message,notice.status === 'error' ? 'error' : 'info');
+  } });
 
   function syncSummaries() {
     summaries.connection.textContent = ({ 'openai/gpt-oss-20b':'GPT-OSS · 20B', 'openai/gpt-oss-120b':'GPT-OSS · 120B' })[modelInput.value.trim()] || modelInput.value.trim() || 'Selecionar';
@@ -318,6 +679,7 @@
     for (const control of [modelInput,contextInput,themeInput,genreInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,retryConnection,saveConnection,saveSource,saveWriting,...shadow.querySelectorAll('[data-choice]')]) {
       control.disabled = busy;
     }
+    for (const control of [fillPage,pickTitle,pickEssay]) control.disabled = busy || !resultInput.value.trim();
     cancel.hidden = !busy;
     generateText.textContent = busy ? 'Gerando…' : 'Gerar redação';
     body.setAttribute('aria-busy', String(busy));
@@ -535,6 +897,23 @@
   }
   document.addEventListener('securitypolicyviolation',observeConnectionPolicy);
 
+  async function fillPageFields(signal) {
+    if (closed || !resultInput.value.trim()) return null;
+    const outcome = await pageFill.fill({title:resultTitleInput.value.trim(),essay:resultInput.value,signal});
+    if (closed || signal?.aborted) return null;
+    setStatus(`Redação pronta. ${outcome.message}`,['ready','filled'].includes(outcome.status) ? 'info' : 'warning');
+    return outcome;
+  }
+
+  async function choosePageField(kind) {
+    if (activeRequest || closed) return;
+    closePane(false);
+    const selected = await pageFill.pick(kind);
+    if (closed) return;
+    openPane('result');
+    if (selected) setStatus('Campo selecionado. Clique em Preencher página para aplicar o título e a redação.');
+  }
+
   async function generateEssay() {
     if (activeRequest || closed) return;
     if (!contextInput.value.trim()) {
@@ -555,6 +934,7 @@
       return;
     }
     closePane(false);
+    pageFill.cancelPick?.();
     const request = { controller:new AbortController(), reason:null, timer:null };
     activeRequest = request;
     request.timer = window.setTimeout(() => {
@@ -591,6 +971,7 @@
         throw new Error('A Groq devolveu uma resposta vazia ou em formato inválido. Tente novamente ou escolha outro modelo.');
       }
       resultInput.value = content.trim();
+      resultTitleInput.value = typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim().slice(0,200) : input.theme || 'Reflexões sobre o tema';
       const count = resultInput.value.match(/\S+/gu)?.length || 0;
       shadow.getElementById('result-count').textContent = `${count.toLocaleString('pt-BR')} palavras`;
       copy.disabled = false;
@@ -601,7 +982,9 @@
       } else if (choice.finish_reason && choice.finish_reason !== 'stop') {
         setStatus('A resposta terminou antes da conclusão normal. Revise o texto recebido e tente novamente se necessário.','warning');
       } else {
-        setStatus('Redação pronta. Revise o texto antes de copiar ou baixar.');
+        await fillPageFields(request.controller.signal);
+        if (request.controller.signal.aborted) throw new Error('aborted');
+        if (closed) return;
       }
       if (!body.hidden) openPane('result');
     } catch (error) {
@@ -635,6 +1018,8 @@
     }
     contextInput.value = '';
     resultInput.value = '';
+    resultTitleInput.value = '';
+    pageFill.dispose();
     savedSelection = '';
     document.removeEventListener('selectionchange',rememberSelection);
     document.removeEventListener('pointerdown',outsideClick);
@@ -698,6 +1083,12 @@
     syncSummaries();
   });
   generate.addEventListener('click',generateEssay);
+  fillPage.addEventListener('click',async () => {
+    if (activeRequest || closed) return;
+    await fillPageFields();
+  });
+  pickTitle.addEventListener('click',() => choosePageField('title'));
+  pickEssay.addEventListener('click',() => choosePageField('essay'));
   retryConnection.addEventListener('click',() => {
     useConnectionWindow = true;
     generateEssay();

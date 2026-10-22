@@ -14,7 +14,9 @@ A Groq está integrada por um backend na Vercel: o navegador envia a referência
 2. Arraste o botão **★ Redator Groq** para a barra de favoritos. Abra a página cujo texto deseja usar e clique nesse favorito.
 3. Em **Referência**, revise o texto capturado e clique em **Usar este texto**. Você pode editar manualmente, reler a página ou usar uma seleção.
 4. Em **Tipo** e **Extensão**, escolha as opções; o painel auxiliar fecha e atualiza o resumo no hub. Em **Tema**, defina instruções se quiser.
-5. Clique em **Gerar redação**. O resultado abre no painel auxiliar; revise, copie ou baixe o `.txt`.
+5. Clique em **Gerar redação**. O hub gera o título e o texto separadamente e preenche os campos correspondentes da página quando consegue identificá-los. O resultado também abre no painel auxiliar para revisão, cópia e download.
+
+Na Sala do Futuro, a detecção usa os rótulos **Titulo** e **Redação**. Em outras páginas, procura campos de título e redação por seus rótulos e atributos. Se houver vários candidatos, use **Escolher título** e **Escolher redação**, clique em cada campo da página e depois em **Preencher página**. Campos ocultos, desativados, de pesquisa, de referência e do próprio hub ficam fora da detecção automática. O hub não clica em botões de salvar ou enviar. Uma geração cancelada, com erro ou incompleta mantém os campos da página como estavam.
 
 O hub é público, sem login, senha ou código de acesso. Você pode compartilhar o link de instalação e o script. A chave da Groq permanece no servidor e não é solicitada aos visitantes.
 
@@ -46,7 +48,7 @@ A proteção de login da Vercel não deve interceptar os endpoints usados pelo c
 ## API
 
 - `GET /api/health`: informa `publicAccess: true` e `configured: true/false`, sem revelar valores. Isso verifica a presença da chave; não confirma sua validade na Groq.
-- `POST /api/generate`: recebe `{context, theme, genre, words, instructions, model}` sem credenciais no navegador. Retorna `choices[0].message.content` e `finish_reason`.
+- `POST /api/generate`: recebe `{context, theme, genre, words, instructions, model}` sem credenciais no navegador. Retorna `title` separado, `choices[0].message.content` com o corpo da redação e `finish_reason`.
 - `OPTIONS /api/generate`: permite o preflight CORS, sem executar uma geração.
 
 O CORS também permite os cabeçalhos de rastreamento `Request-Id`, `Request-Context`, `Traceparent`, `Tracestate` e `Baggage`. Algumas páginas, como a Sala do Futuro, acrescentam esses cabeçalhos automaticamente ao `fetch`. Eles não são usados como autenticação nem repassados à Groq.
@@ -61,9 +63,9 @@ Há um limite local de 5 solicitações válidas por IP e 30 no total por minuto
 
 A captura é local e prefere `main`, depois `article`, e por último o corpo da página. Exclui navegação, cabeçalhos, rodapés, conteúdo oculto, formulários e campos editáveis. Não lê imagens, PDFs, canvas ou documentos de iframes. Revise o texto, porque a organização varia entre páginas.
 
-Só ao gerar, a referência revisada, tema, instruções, tipo, extensão e modelo seguem para seu backend e para a Groq. O script não lê cookies nem inclui a URL ou o título da página na mensagem. Nenhum campo da página é preenchido ou enviado automaticamente.
+Só ao gerar, a referência revisada, tema, instruções, tipo, extensão e modelo seguem para seu backend e para a Groq. O script não lê cookies nem inclui a URL ou o título da página na mensagem. Após uma geração completa, o título e o corpo são preenchidos nos campos identificados da página, com eventos de edição para que o site reconheça o texto. O envio da atividade depende da sua ação no site.
 
-A chave Groq fica apenas no servidor. Os textos ficam na memória da página, sem `localStorage`, `sessionStorage` ou cookies. Scripts e extensões da página podem observar o conteúdo: use páginas confiáveis. Shadow DOM isola a aparência.
+A chave Groq fica apenas no servidor. O hub mantém seus textos na memória, sem `localStorage`, `sessionStorage` ou cookies. Ao receber os campos preenchidos, o próprio site pode salvar o rascunho pelo seu funcionamento normal. Scripts e extensões da página podem observar o conteúdo: use páginas confiáveis. Shadow DOM isola a aparência.
 
 A resposta é exibida como texto simples; HTML retornado pelo modelo não é executado. O prompt instrui o modelo a tratar comandos da referência como dados e evitar fontes inventadas. Revise a redação: modelos podem errar, e o formato ENEM não garante nota.
 
