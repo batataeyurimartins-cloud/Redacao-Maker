@@ -1,0 +1,11 @@
+node_modules/
+.vercel/
+.env*
+!.env.example
+scratch/
+publish/
+*.zip
+redator-groq-pessoal.js
+acesso-privado*
+public/redator-groq.js
+public/hub.js
