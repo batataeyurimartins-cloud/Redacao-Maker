@@ -3,7 +3,7 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.5.0';
+  const VERSION = '1.5.1';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
@@ -278,6 +278,8 @@
     const essayCue = /\b(redacao|essay|composition|desenvolvimento)\b|\b(seu|sua|your) (texto|redacao|text|essay)\b|\b(corpo do texto|texto da resposta|escreva (aqui|seu texto)|digite seu texto)\b/;
     const unrelated = /\b(referencia|reference|apoio|proposta|enunciado|prompt|contexto|context|instrucao|instrucoes|motivador|motivadores|pesquisa|pesquisar|search|busca|email|e mail|senha|password|usuario|username|login|telefone|phone|comentario|comment|mensagem|message|chat|feedback|observacao|tema|theme|subject)\b|\bnome completo\b/;
     const referenceHeading = /\b(texto de apoio|textos de apoio|proposta|enunciado|referencia|instrucoes|prompt|contexto)\b/;
+    const salaActivity = location.hostname === 'saladofuturo.educacao.sp.gov.br' && /^\/atividade(?:\/|$)/.test(location.pathname);
+    const muiTextarea = node => node?.tagName === 'TEXTAREA' && node.classList.contains('MuiInputBase-input') && node.classList.contains('MuiInputBase-inputMultiline');
     const parentOf = node => node?.parentElement || node?.getRootNode?.()?.host || null;
     function notify(result) { try { onStatus?.(result); } catch (_) {} }
 
@@ -299,7 +301,11 @@
         for (let context = node; context; context = context.ownerDocument.defaultView.frameElement) {
           if (!context.getClientRects().length || excluded(context)) return false;
           for (let current = context; current; current = parentOf(current)) {
-            if (current.hidden || current.inert || current.getAttribute?.('aria-hidden') === 'true' ||
+            const hiddenFromAccess = current.getAttribute?.('aria-hidden') === 'true';
+            // Algumas telas da Sala mantêm aria-hidden em contêineres ainda visíveis.
+            // A própria textarea e os espelhos de medição continuam excluídos.
+            const staleSalaAncestor = salaActivity && muiTextarea(node) && current !== node;
+            if (current.hidden || current.inert || (hiddenFromAccess && !staleSalaAncestor) ||
                 current.getAttribute?.('aria-disabled') === 'true' || current.getAttribute?.('aria-readonly') === 'true') return false;
             const style = current.ownerDocument.defaultView.getComputedStyle(current);
             if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
@@ -364,6 +370,14 @@
       return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, 300);
     }
 
+    function nearbyFieldLabel(node) {
+      if (!node || node.matches?.('input,textarea,[contenteditable],script,style')) return '';
+      const text = labelText(node);
+      const cue = normalize(text);
+      if (text.length > 100 || unrelated.test(cue)) return '';
+      return titleCue.test(cue) || essayCue.test(cue) ? text : '';
+    }
+
     function describe(element) {
       const root = element.getRootNode();
       const labels = [...(element.labels || [])].map(labelText);
@@ -376,12 +390,20 @@
       const group = element.closest('.MuiFormControl-root,.form-group,[data-field]');
       if (!labels.some(Boolean) && group) {
         for (const label of group.querySelectorAll('label')) labels.push(labelText(label));
+        const localFields = [...group.querySelectorAll(fieldSelector)].map(fieldFrom).filter((node, index, all) => node && all.indexOf(node) === index && editable(node));
+        if (localFields.length === 1 && localFields[0] === element) {
+          for (const label of group.querySelectorAll('p,span,.MuiTypography-root')) {
+            const text = nearbyFieldLabel(label);
+            if (text) labels.push(text);
+          }
+        }
       }
       let heading = '';
-      for (let current = element, level = 0; current && level < 3 && !heading; current = current.parentElement, level++) {
+      for (let current = element, level = 0; current && level < 4 && !heading; current = current.parentElement, level++) {
         const previous = current.previousElementSibling;
         if (previous?.matches('label,h1,h2,h3,h4,h5,h6,legend')) heading = labelText(previous);
         else if (previous?.matches('header')) heading = labelText(previous.querySelector('h1,h2,h3,h4,h5,h6'));
+        else if (previous?.matches('p,span,.MuiTypography-root')) heading = nearbyFieldLabel(previous);
       }
       const attrs = ['name', 'id', 'title', 'data-testid', 'data-field'].map(name => element.getAttribute(name) || '').join(' ');
       const direct = normalize(labels.join(' ') + ' ' + attrs);
@@ -389,17 +411,51 @@
         element, direct, heading: normalize(heading),
         label: (labels.find(Boolean) || heading || element.getAttribute('name') || element.id || element.tagName).slice(0, 100),
         form: element.form || element.closest('form,[role="form"]'),
-        titleScore: titleCue.test(direct) ? 120 : titleCue.test(normalize(heading)) ? 95 : 0,
-        essayScore: essayCue.test(direct) ? 120 : essayCue.test(normalize(heading)) ? 95 : 0
+        titleScore: titleCue.test(direct) ? 120 : !referenceHeading.test(normalize(heading)) && titleCue.test(normalize(heading)) ? 95 : 0,
+        essayScore: essayCue.test(direct) ? 120 : !referenceHeading.test(normalize(heading)) && essayCue.test(normalize(heading)) ? 95 : 0
       };
+    }
+
+    function salaEditorPair(descriptions) {
+      if (!salaActivity) return { pair:null, ambiguous:false };
+      const fields = descriptions.filter(item => muiTextarea(item.element));
+      if (fields.length > 2) return { pair:null, ambiguous:true };
+      if (fields.length !== 2 || fields[0].element.ownerDocument !== fields[1].element.ownerDocument) return { pair:null, ambiguous:false };
+      const [first,second] = fields.map(item => item.element);
+      let common = first.parentElement;
+      let distance = 0;
+      while (common && !common.contains(second) && distance++ < 6) common = common.parentElement;
+      if (!common || !common.contains(second) || common.matches('html,body,main,[role="main"],#root,#__next')) return { pair:null, ambiguous:false };
+      let secondDistance = 0;
+      for (let node = second; node && node !== common; node = node.parentElement) secondDistance++;
+      if (secondDistance > 6) return { pair:null, ambiguous:false };
+      if (first.form !== second.form && (first.form || second.form)) return { pair:null, ambiguous:false };
+      return { pair:fields, ambiguous:false };
     }
 
     function detect(allowDisposed = false) {
       if (disposed && !allowDisposed) return { title: null, essay: null, status: 'not-found', ambiguous: { title: false, essay: false }, candidates: { title: [], essay: [] }, message: 'Preenchimento encerrado.' };
       for (const kind of ['title', 'essay']) if (pinned[kind] && !editable(pinned[kind], kind)) pinned[kind] = null;
-      const descriptions = collect().fields.map(describe).filter(item => !unrelated.test(item.direct) && !referenceHeading.test(item.heading));
-      const titles = descriptions.filter(item => item.titleScore && item.element !== pinned.essay && editable(item.element, 'title'));
+      const descriptions = collect().fields.map(describe).filter(item => !unrelated.test(item.direct) &&
+        (!referenceHeading.test(item.heading) || item.titleScore >= 120 || item.essayScore >= 120 ||
+          (salaActivity && muiTextarea(item.element) && /\bproposta\b/.test(item.heading) && !/\b(apoio|referencia|contexto|instrucoes|enunciado|prompt)\b/.test(item.heading))));
+      let titles = descriptions.filter(item => item.titleScore && item.element !== pinned.essay && editable(item.element, 'title'));
       let essays = descriptions.filter(item => item.essayScore && !item.titleScore && item.element !== pinned.title && editable(item.element, 'essay'));
+      const sala = salaEditorPair(descriptions);
+      if (sala.pair && [...titles,...essays].some(item => !sala.pair.some(candidate => candidate.element === item.element))) sala.ambiguous = true;
+      if (sala.pair && !sala.ambiguous) {
+        const [first,second] = sala.pair;
+        if (!titles.length && !essays.length) {
+          if (!pinned.title && first.element !== pinned.essay) titles = [{...first,titleScore:85}];
+          if (!pinned.essay && second.element !== pinned.title) essays = [{...second,essayScore:85}];
+        } else if (!essays.length && titles.length === 1) {
+          const other = sala.pair.find(item => item.element !== titles[0].element && item.element !== pinned.title);
+          if (other) essays = [{...other,essayScore:85}];
+        } else if (!titles.length && essays.length === 1) {
+          const other = sala.pair.find(item => item.element !== essays[0].element && item.element !== pinned.essay);
+          if (other) titles = [{...other,titleScore:85}];
+        }
+      }
       const chosenTitle = pinned.title || (titles.length === 1 ? titles[0].element : null);
       const titleForm = chosenTitle && (chosenTitle.form || chosenTitle.closest('form,[role="form"]'));
       if (!essays.length && titleForm) {
@@ -414,7 +470,7 @@
       };
       const title = pinned.title || (titles.length === 1 ? titles[0].element : null);
       const essay = pinned.essay || (essays.length === 1 ? essays[0].element : null);
-      const ambiguous = { title: !pinned.title && titles.length > 1, essay: !pinned.essay && essays.length > 1 };
+      const ambiguous = { title: !pinned.title && (titles.length > 1 || sala.ambiguous), essay: !pinned.essay && (essays.length > 1 || sala.ambiguous) };
       const status = ambiguous.title || ambiguous.essay ? 'ambiguous' : title && essay ? 'ready' : title || essay ? 'partial' : 'not-found';
       const message = status === 'ready' ? 'Título e redação encontrados na página.' : status === 'ambiguous'
         ? 'Há mais de um campo possível. Escolha o campo na página.' : status === 'partial'
@@ -511,8 +567,11 @@
       const writes = [];
       const stopped = () => disposed || signal?.aborted;
       const settle = () => new Promise(resolve => {
-        const timer = setTimeout(resolve, 60);
-        window.requestAnimationFrame?.(() => window.requestAnimationFrame(() => { clearTimeout(timer); resolve(); }));
+        // Deixa o estado do site atualizar antes de iniciar a espera de renderização.
+        window.setTimeout(() => {
+          const timer = window.setTimeout(resolve, 60);
+          window.requestAnimationFrame?.(() => window.requestAnimationFrame(() => { clearTimeout(timer); resolve(); }));
+        },0);
       });
       async function rollback() {
         for (const entry of [...writes].reverse()) {
