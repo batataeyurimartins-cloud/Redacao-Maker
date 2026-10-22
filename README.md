@@ -29,7 +29,7 @@ Cadastre estas variáveis como segredos no projeto, em **Production**, antes da 
 | Variável | Valor |
 | --- | --- |
 | `GROQ_API_KEY` | Chave criada em https://console.groq.com/keys |
-| `GROQ_MODEL` | Opcional: `llama-3.3-70b-versatile` (padrão) ou `llama-3.1-8b-instant` |
+| `GROQ_MODEL` | Opcional: `openai/gpt-oss-20b` (padrão) ou `openai/gpt-oss-120b` |
 
 Não coloque esses valores no código ou no GitHub. `.env.example` documenta apenas os nomes, sem credenciais. Mudanças nas variáveis de produção exigem uma nova implantação para afetar o código implantado.
 
@@ -44,6 +44,8 @@ A proteção de login da Vercel não deve interceptar os endpoints usados pelo c
 - `OPTIONS /api/generate`: permite o preflight CORS, sem executar uma geração.
 
 O servidor limita a referência a 18.000 caracteres, aceita os dois modelos indicados, monta o prompt e usa até 2.800 tokens de saída. O tipo pode ser `dissertativa`, `enem` ou `expositiva`; a extensão aproximada pode ser 250, 350, 500 ou 700 palavras. O servidor espera até 80 segundos pela Groq; o cliente espera até 90 segundos pelo servidor.
+
+Os modelos GPT-OSS são servidos pela própria Groq e usam a chave Groq configurada. A chamada usa raciocínio baixo e retorna somente a redação. Os modelos Llama anteriores foram desativados para contas gratuitas/developer em agosto de 2026.
 
 Há um limite local de 5 solicitações válidas por IP e 30 no total por minuto em cada instância do servidor. Ao atingir o limite, a API responde HTTP 429 e informa o tempo de espera. Os contadores ficam na memória de cada instância: não são um limite distribuído nem uma garantia de orçamento global.
 

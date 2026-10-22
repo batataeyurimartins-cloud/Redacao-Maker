@@ -3,7 +3,7 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.3.0';
+  const VERSION = '1.3.1';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
@@ -159,7 +159,7 @@
     }
   `);
 
-  const modelInput = element('input', { id:'model', value:'llama-3.3-70b-versatile', autoComplete:'off', spellcheck:false, maxLength:160 });
+  const modelInput = element('input', { id:'model', value:'openai/gpt-oss-20b', autoComplete:'off', spellcheck:false, maxLength:160 });
   const contextInput = element('textarea', { id:'context', spellcheck:false, maxLength:MAX_CONTEXT, 'aria-describedby':'context-help context-count' });
   const themeInput = element('input', { id:'theme', placeholder:'Opcional: se vazio, inferir a partir do texto', maxLength:300 });
   const genreInput = element('select', { id:'genre', hidden:true, 'aria-label':'Tipo de redação' }, [
@@ -220,7 +220,7 @@
   const panes = {
     connection:element('div',{ id:'pane-connection', className:'pane', hidden:true },[
       element('label',{ htmlFor:'model' },'Modelo'),modelInput,
-      element('small',{},'Modelos: llama-3.3-70b-versatile ou llama-3.1-8b-instant. A API é pública; a chave da Groq fica no servidor.'),saveConnection
+      element('small',{},'Modelos: openai/gpt-oss-20b ou openai/gpt-oss-120b. A API é pública; a chave da Groq fica no servidor.'),saveConnection
     ]),
     source:element('div',{ id:'pane-source', className:'pane', hidden:true },[
       element('div',{ className:'row' },[capturePage,captureSelection]),
@@ -253,7 +253,7 @@
   document.documentElement.append(host);
 
   function syncSummaries() {
-    summaries.connection.textContent = ({ 'llama-3.3-70b-versatile':'Llama 3.3 · 70B', 'llama-3.1-8b-instant':'Llama 3.1 · 8B' })[modelInput.value.trim()] || modelInput.value.trim() || 'Selecionar';
+    summaries.connection.textContent = ({ 'openai/gpt-oss-20b':'GPT-OSS · 20B', 'openai/gpt-oss-120b':'GPT-OSS · 120B' })[modelInput.value.trim()] || modelInput.value.trim() || 'Selecionar';
     summaries.source.textContent = contextInput.value.trim() ? `${sourceKind} · ${contextInput.value.length.toLocaleString('pt-BR')} car.` : 'Adicionar texto';
     summaries.genre.textContent = genreOptions.find(([value]) => value === genreInput.value)?.[1] || 'Argumentativa';
     summaries.words.textContent = `${wordsInput.value} palavras`;

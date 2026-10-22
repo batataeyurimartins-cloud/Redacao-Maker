@@ -5,7 +5,7 @@ const { EventEmitter } = require('node:events');
 const { test, beforeEach, afterEach } = require('node:test');
 
 const API_KEY = 'gsk_FAKE_SERVER_SECRET_FOR_TESTS_ONLY';
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+const DEFAULT_MODEL = 'openai/gpt-oss-20b';
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const validInput = {
   context: 'A inclusão digital amplia o acesso à educação, mas o custo da conexão cria barreiras.',
@@ -109,7 +109,9 @@ test('anonymous backend builds its own Groq prompt from normalized essay setting
   let sent;
   global.fetch = async (url, options) => {
     sent = { url, options, body: JSON.parse(options.body) };
-    return responseFor(completion('  Redação recebida com segurança.  '));
+    const providerResult = completion('  Redação recebida com segurança.  ');
+    providerResult.choices[0].message.reasoning = 'PRIVATE_REASONING_MARKER_NOT_FOR_CLIENT';
+    return responseFor(providerResult);
   };
   const { res } = await invoke({ body: { ...validInput, context: `  ${validInput.context}  `,
     messages: [{ role: 'system', content: 'CLIENT_SYSTEM_OVERRIDE_MARKER' }],
@@ -124,6 +126,8 @@ test('anonymous backend builds its own Groq prompt from normalized essay setting
   assert.equal(sent.body.max_completion_tokens, 2800);
   assert.equal(sent.body.temperature, 0.65);
   assert.equal(sent.body.stream, false);
+  assert.equal(sent.body.reasoning_effort, 'low');
+  assert.equal(sent.body.include_reasoning, false);
   assert.equal(sent.body.messages[0].role, 'system');
   assert.equal(sent.body.messages[1].role, 'user');
   const prompt = JSON.stringify(sent.body.messages);
@@ -138,6 +142,8 @@ test('anonymous backend builds its own Groq prompt from normalized essay setting
   assert.equal(res.body.choices[0].finish_reason, 'stop');
   assert.equal(res.body.model, DEFAULT_MODEL);
   assert.ok(!JSON.stringify(res.body).includes(API_KEY));
+  assert.doesNotMatch(JSON.stringify(res.body), /PRIVATE_REASONING_MARKER_NOT_FOR_CLIENT/);
+  assert.equal(res.body.choices[0].message.reasoning, undefined);
 });
 
 test('CORS preflight is public but never invokes the provider or exposes credentials', async () => {
@@ -206,22 +212,22 @@ for (const [label, body] of invalidBodies) {
 test('accepts JSON text and the second allowlisted model while keeping provider request bounded', async () => {
   let sent;
   global.fetch = async (_url, options) => { sent = JSON.parse(options.body); return responseFor(completion()); };
-  const { res } = await invoke({ body: JSON.stringify({ ...validInput, model: 'llama-3.1-8b-instant', words: 250, genre: 'expositiva' }) });
+  const { res } = await invoke({ body: JSON.stringify({ ...validInput, model: 'openai/gpt-oss-120b', words: 250, genre: 'expositiva' }) });
   assert.equal(res.statusCode, 200);
-  assert.equal(sent.model, 'llama-3.1-8b-instant');
+  assert.equal(sent.model, 'openai/gpt-oss-120b');
   assert.match(sent.messages[0].content, /expositiva/i);
   assert.match(sent.messages[0].content, /250/);
 });
 
 test('uses the configured allowlisted model when the request does not select one', async () => {
-  process.env.GROQ_MODEL = 'llama-3.1-8b-instant';
+  process.env.GROQ_MODEL = 'openai/gpt-oss-120b';
   let sent;
   global.fetch = async (_url, options) => { sent = JSON.parse(options.body); return responseFor(completion()); };
   const body = { ...validInput };
   delete body.model;
   const { res } = await invoke({ body });
   assert.equal(res.statusCode, 200);
-  assert.equal(sent.model, 'llama-3.1-8b-instant');
+  assert.equal(sent.model, 'openai/gpt-oss-120b');
 });
 
 for (const [upstream, expected] of [[401, 502], [403, 502], [429, 429], [500, 502]]) {

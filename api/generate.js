@@ -3,8 +3,8 @@
 const { isIP } = require('node:net');
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
-const MODELS = new Set([DEFAULT_MODEL, 'llama-3.1-8b-instant']);
+const DEFAULT_MODEL = 'openai/gpt-oss-20b';
+const MODELS = new Set([DEFAULT_MODEL, 'openai/gpt-oss-120b']);
 const WORD_COUNTS = new Set([250, 350, 500, 700]);
 const MAX_BODY_BYTES = 64 * 1024;
 const TIMEOUT_MS = 80000;
@@ -140,7 +140,7 @@ function validate(body) {
     throw error;
   }
   const model = body.model === undefined ? configuredModel : typeof body.model === 'string' ? body.model.trim() : '';
-  if (!MODELS.has(model)) throw inputError('Escolha um modelo Groq permitido: llama-3.3-70b-versatile ou llama-3.1-8b-instant.');
+  if (!MODELS.has(model)) throw inputError('Escolha um modelo Groq permitido: openai/gpt-oss-20b ou openai/gpt-oss-120b.');
   return { context, theme, instructions, genre, words, model };
 }
 
@@ -218,6 +218,8 @@ module.exports = async function generate(req, res) {
       body: JSON.stringify({
         model: input.model,
         messages: messages(input),
+        reasoning_effort: 'low',
+        include_reasoning: false,
         temperature: 0.65,
         max_completion_tokens: 2800,
         stream: false

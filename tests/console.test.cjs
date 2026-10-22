@@ -149,7 +149,7 @@ test('sends anonymous requests with edited context and settings and renders outp
   const context = 'CONTEXTO_EDITADO: bibliotecas públicas oferecem internet gratuita.';
   await configure(page, context);
   await openPane(page, 'connection');
-  await control(page, 'model').fill('llama-3.3-70b-versatile');
+  await control(page, 'model').fill('openai/gpt-oss-20b');
   await control(page, 'save-connection').click();
   await openPane(page, 'writing');
   await control(page, 'theme').fill('Inclusão digital e cidadania');
@@ -157,7 +157,7 @@ test('sends anonymous requests with edited context and settings and renders outp
   await control(page, 'save-writing').click();
   await generateAndWait(page);
   assert.equal(request.headers.authorization, undefined);
-  assert.equal(request.data.model, 'llama-3.3-70b-versatile');
+  assert.equal(request.data.model, 'openai/gpt-oss-20b');
   assert.deepEqual(Object.keys(request.data).sort(), ['context', 'genre', 'instructions', 'model', 'theme', 'words']);
   assert.equal(request.data.context, context);
   assert.equal(request.data.theme, 'Inclusão digital e cidadania');
@@ -275,18 +275,18 @@ test('closing the panel aborts a pending generation and removes the UI', async t
 test('never persists reference text or model settings in browser storage', async t => {
   const page = await mount(t);
   await openPane(page, 'connection');
-  await control(page, 'model').fill('llama-3.1-8b-instant');
+  await control(page, 'model').fill('openai/gpt-oss-120b');
   await control(page, 'save-connection').click();
   await configure(page, 'CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA');
   await generateAndWait(page);
   const stored = await page.evaluate(() => JSON.stringify({
     local: { ...localStorage }, session: { ...sessionStorage }, cookie: document.cookie,
   }));
-  assert.doesNotMatch(stored, /llama-3\.1-8b-instant|CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
+  assert.doesNotMatch(stored, /openai\/gpt-oss-120b|CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
   await control(page, 'close').click();
   await page.addScriptTag({ content: script });
   assert.doesNotMatch(await control(page, 'context').inputValue(), /CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
-  assert.equal(await control(page, 'model').inputValue(), 'llama-3.3-70b-versatile');
+  assert.equal(await control(page, 'model').inputValue(), 'openai/gpt-oss-20b');
 });
 
 test('does not call the public backend without usable reference text', async t => {
@@ -427,6 +427,7 @@ test('starts with a compact dark hub in the bottom-right corner and no secondary
   const channels = background.match(/[\d.]+/g).slice(0, 3).map(Number);
   assert.ok(channels.every(channel => channel <= 45), `hub background is ${background}`);
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
+  assert.match(await control(page, 'summary-connection').textContent(), /GPT-OSS.*20B/i);
   assert.equal(await control(page, 'api-key').count(), 0);
   assert.equal(await page.locator('#redator-groq-console >> input[type="password"]').count(), 0);
   assert.doesNotMatch(script, /PERSONAL_ACCESS_TOKEN|HUB_ACCESS_TOKEN/);
@@ -492,9 +493,9 @@ test('saving edited configuration closes its card and updates the hub summaries'
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
   await openPane(page, 'connection');
   assert.match(await control(page, 'secondary-description').textContent(), /público|sem login|sem código/i);
-  await control(page, 'model').fill('llama-3.1-8b-instant');
+  await control(page, 'model').fill('openai/gpt-oss-120b');
   await control(page, 'save-connection').click();
-  assert.match(await control(page, 'summary-connection').textContent(), /Llama 3\.1.*8B/i);
+  assert.match(await control(page, 'summary-connection').textContent(), /GPT-OSS.*120B/i);
   assert.match(await control(page, 'summary-source').textContent(), /\d/);
   await openPane(page, 'writing');
   await control(page, 'theme').fill('Leitura e cidadania');
@@ -524,7 +525,7 @@ test('mobile reinjection restores the hub from an open secondary pane and preser
   const page = await mount(t);
   await page.setViewportSize({ width: 390, height: 844 });
   await openPane(page, 'connection');
-  await control(page, 'model').fill('llama-3.1-8b-instant');
+  await control(page, 'model').fill('openai/gpt-oss-120b');
   await control(page, 'save-connection').click();
   await configure(page);
   await openPane(page, 'source');
@@ -536,7 +537,7 @@ test('mobile reinjection restores the hub from an open secondary pane and preser
   assert.equal(await control(page, 'main-panel').isVisible(), true);
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
   assert.equal(await control(page, 'context').inputValue(), draft);
-  assert.equal(await control(page, 'model').inputValue(), 'llama-3.1-8b-instant');
+  assert.equal(await control(page, 'model').inputValue(), 'openai/gpt-oss-120b');
 });
 
 test('upgrading an old panel calls its cleanup once and replaces it with one current hub', async t => {
