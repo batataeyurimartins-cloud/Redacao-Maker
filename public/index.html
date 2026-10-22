@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Instale o hub compacto Redator Groq pelo console do navegador. A chave da Groq fica no servidor.">
-  <title>Redator Groq · instalar o hub</title>
+  <meta name="description" content="Salve o bookmarklet Redator Groq nos favoritos e abra o hub na página com um clique.">
+  <title>Redator Groq · bookmarklet</title>
   <style>
     :root { color-scheme:dark; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#0b0b0e; color:#efeff3; }
     * { box-sizing:border-box; }
@@ -29,6 +29,15 @@
     button:disabled { opacity:.55; cursor:wait; }
     .download { background:#1c1c23; color:#dedee7; font-size:12px; }
     .download:hover { background:#292931; }
+    .bookmarklet { display:flex; justify-content:center; align-items:center; gap:7px; width:100%; padding:13px;
+      background:#efeff3; color:#101014; border:1px solid #efeff3; border-radius:10px; font-size:14px;
+      font-weight:650; text-decoration:none; cursor:grab; }
+    .bookmarklet:hover { background:white; }
+    .bookmarklet:active { cursor:grabbing; }
+    #copy-bookmarklet { background:#1c1c23; color:#dedee7; font-weight:500; }
+    .bookmarklet-help { margin:10px 0 14px; font-size:11px; }
+    details { margin-top:20px; padding-top:16px; border-top:1px solid #ffffff18; }
+    summary { font-size:11px; color:#aaaab9; cursor:pointer; }
     #copy-loader { width:100%; flex-basis:100%; }
     #copy-script { background:#1c1c23; border-color:#ffffff24; color:#dedee7; }
     #copy-script:hover:enabled { background:#292931; }
@@ -52,16 +61,24 @@
   <main>
     <header><span class="logo" aria-hidden="true">RG</span><span class="brand">Redator</span><span class="badge">GROQ</span></header>
     <section class="card" aria-labelledby="install-title">
-      <h1 id="install-title">Seu hub, na própria página.</h1>
-      <p>Um hub preto e compacto para transformar o texto da página em uma redação. Público e sem conta, código de acesso ou senha.</p>
+      <h1 id="install-title">Seu hub, em um favorito.</h1>
+      <p>Salve uma vez e abra o hub na página com um clique. Público, sem login ou código de acesso.</p>
       <ol>
-        <li><span>Clique em <strong>Copiar comando</strong> e abra a página que contém o assunto da redação.</span></li>
-        <li><span>Pressione <strong>F12</strong>, abra a aba <strong>Console</strong>, cole o comando e pressione Enter.</span></li>
-        <li><span>No hub, confira <strong>Referência</strong>, escolha o tipo e a extensão e clique em <strong>Gerar redação</strong>.</span></li>
+        <li><span>Mostre a <strong>barra de favoritos</strong> do navegador: Ctrl+Shift+B no Chrome ou Edge; no Mac, ⌘⇧B.</span></li>
+        <li><span>Arraste o botão <strong>★ Redator Groq</strong> abaixo para essa barra.</span></li>
+        <li><span>Abra a página que quer ler e clique no favorito <strong>Redator Groq</strong>. Confira a referência no hub e gere sua redação.</span></li>
       </ol>
-      <div class="actions"><button id="copy-loader" type="button">Copiar comando</button><button id="copy-script" type="button">Copiar script completo</button><a class="download" href="/redator-groq.js" download="redator-groq.js">Baixar .js</a></div>
-      <code class="loader" id="loader-command" aria-label="Comando para colar no console"></code>
-      <p class="hint">Se a página bloquear o carregamento externo, use <strong>Copiar script completo</strong> e cole o conteúdo inteiro no Console.</p>
+      <a id="bookmarklet" class="bookmarklet" href="#" draggable="true" title="Arraste para a barra de favoritos">★ Redator Groq</a>
+      <p class="bookmarklet-help">Arraste para instalar. Depois, clique no favorito quando estiver na página do assunto.</p>
+      <div class="actions"><button id="copy-bookmarklet" type="button">Copiar bookmarklet</button><a class="download" href="/favorito-redator-groq.html" download="favorito-redator-groq.html">Baixar favorito</a></div>
+      <p class="hint">Para instalar manualmente, copie o bookmarklet, crie um favorito chamado <strong>Redator Groq</strong> e cole o código no campo <strong>URL</strong> ou <strong>Endereço</strong> do favorito.</p>
+      <details id="console-options">
+        <summary>Outras formas de abrir o hub</summary>
+        <p class="hint">Algumas páginas bloqueiam scripts externos. Nesse caso, você pode copiar o script completo e colá-lo no Console das ferramentas do desenvolvedor.</p>
+        <div class="actions"><button id="copy-loader" type="button">Copiar comando do console</button><button id="copy-script" type="button">Copiar script completo</button><a class="download" href="/redator-groq.js" download="redator-groq.js">Baixar .js</a></div>
+        <code class="loader" id="loader-command" aria-label="Comando para colar no console"></code>
+        <p class="hint">O favorito funciona em páginas web comuns. Páginas internas do navegador e visualizadores de PDF podem impedir a execução.</p>
+      </details>
       <p id="copy-status" role="status" aria-live="polite"></p>
       <label id="manual-label" for="manual-script" hidden>Script para copiar manualmente</label>
       <textarea id="manual-script" readonly spellcheck="false" aria-labelledby="manual-label" hidden></textarea>
@@ -75,16 +92,20 @@
     (() => {
       'use strict';
       const loaderButton = document.getElementById('copy-loader');
+      const bookmarkletLink = document.getElementById('bookmarklet');
+      const bookmarkletButton = document.getElementById('copy-bookmarklet');
       const copyButton = document.getElementById('copy-script');
       const status = document.getElementById('copy-status');
       const manual = document.getElementById('manual-script');
       const manualLabel = document.getElementById('manual-label');
       const health = document.getElementById('health-status');
       const publicScriptUrl = new URL('/hub.js',location.origin).href;
-      const loader = `(()=>{const s=document.createElement('script');s.src=${JSON.stringify(publicScriptUrl)};s.onload=()=>s.remove();document.documentElement.appendChild(s)})()`;
+      const loader = `(()=>{const s=document.createElement('script');s.src=${JSON.stringify(publicScriptUrl)};s.onload=()=>s.remove();s.onerror=()=>{s.remove();alert('Nao foi possivel abrir o hub nesta pagina. Acesse https://redacao-maker.vercel.app para ver as alternativas.')};document.documentElement.appendChild(s)})()`;
+      const bookmarklet = 'javascript:' + encodeURIComponent(loader);
+      bookmarkletLink.href = bookmarklet;
       document.getElementById('loader-command').textContent = loader;
 
-      async function copyText(source,successMessage,manualDescription) {
+      async function copyText(source,successMessage,manualDescription,manualHint) {
         try {
           if (!navigator.clipboard?.writeText) throw new Error('manual copy');
           await navigator.clipboard.writeText(source);
@@ -98,9 +119,23 @@
           manualLabel.hidden = false;
           manual.focus();
           manual.select();
-          status.textContent = 'O navegador bloqueou a cópia automática. Use Ctrl+C ou ⌘C no texto selecionado.';
+          status.textContent = manualHint || 'O navegador bloqueou a cópia automática. Use Ctrl+C ou ⌘C no texto selecionado.';
         }
       }
+
+      bookmarkletLink.addEventListener('click',event => {
+        event.preventDefault();
+        status.textContent = 'Arraste o botão para a barra de favoritos. Se preferir, use Copiar bookmarklet e cole no campo URL de um favorito novo.';
+      });
+
+      bookmarkletButton.addEventListener('click',async () => {
+        bookmarkletButton.disabled = true;
+        try {
+          await copyText(bookmarklet,'Bookmarklet copiado. Cole no campo URL ou Endereço de um favorito chamado Redator Groq.','Bookmarklet para colar no campo URL do favorito','Use Ctrl+C ou ⌘C no texto selecionado e cole no campo URL ou Endereço de um favorito, incluindo javascript:.');
+        } finally {
+          bookmarkletButton.disabled = false;
+        }
+      });
 
       loaderButton.addEventListener('click',async () => {
         loaderButton.disabled = true;

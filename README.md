@@ -1,4 +1,4 @@
-# Redator Groq · hub compacto para o console
+# Redator Groq · hub compacto por bookmarklet
 
 Hub preto de 284 px para gerar redações a partir do texto de uma página. O painel principal fica no canto inferior direito; as opções abrem no canto oposto e fecham quando você escolhe. Em telas pequenas, o principal reaparece ao concluir a escolha.
 
@@ -10,15 +10,17 @@ A Groq está integrada por um backend na Vercel: o navegador envia a referência
 
 ## Como usar
 
-1. Acesse https://redacao-maker.vercel.app e clique em **Copiar comando**.
-2. Abra a página cujo texto deseja usar. Pressione **F12**, entre na aba **Console**, cole o comando e pressione **Enter**. No Mac, use `⌘⌥J` para abrir o console do Chrome.
+1. Acesse https://redacao-maker.vercel.app e mostre a barra de favoritos do navegador (`Ctrl+Shift+B` no Chrome/Edge ou `⌘⇧B` no Mac).
+2. Arraste o botão **★ Redator Groq** para a barra de favoritos. Abra a página cujo texto deseja usar e clique nesse favorito.
 3. Em **Referência**, revise o texto capturado e clique em **Usar este texto**. Você pode editar manualmente, reler a página ou usar uma seleção.
 4. Em **Tipo** e **Extensão**, escolha as opções; o painel auxiliar fecha e atualiza o resumo no hub. Em **Tema**, defina instruções se quiser.
 5. Clique em **Gerar redação**. O resultado abre no painel auxiliar; revise, copie ou baixe o `.txt`.
 
 O hub é público, sem login, senha ou código de acesso. Você pode compartilhar o link de instalação e o script. A chave da Groq permanece no servidor e não é solicitada aos visitantes.
 
-Se a página bloquear o carregamento externo pelo comando curto, use **Copiar script completo** na página de instalação e cole todo o código no console. Não desative a segurança do navegador.
+Para instalar manualmente, clique em **Copiar bookmarklet**, crie um favorito chamado **Redator Groq** e cole o código no campo **URL/Endereço** do favorito, incluindo o prefixo `javascript:`. O botão **Baixar favorito** oferece um arquivo HTML para importar pelo gerenciador de favoritos do navegador.
+
+Algumas páginas bloqueiam o carregamento externo do bookmarklet; páginas internas do navegador e visualizadores de PDF também podem impedir sua execução. Em **Outras formas de abrir o hub**, você encontra **Copiar script completo** para colar o código no Console. Não desative a segurança do navegador.
 
 **Escape**, o **×** das opções ou um clique fora fecham o painel auxiliar. **−** recolhe o hub; **+** expande. O **×** do hub encerra a sessão e limpa os campos. Reexecutar a mesma versão preserva o rascunho; uma versão nova encerra e substitui a anterior.
 
@@ -33,7 +35,7 @@ Cadastre estas variáveis como segredos no projeto, em **Production**, antes da 
 
 Não coloque esses valores no código ou no GitHub. `.env.example` documenta apenas os nomes, sem credenciais. Mudanças nas variáveis de produção exigem uma nova implantação para afetar o código implantado.
 
-O projeto usa Node.js 24, `npm run build` e o diretório estático `public`. Os endpoints ficam em `api/`. O build copia o script público para `redator-groq.js` e `hub.js` e configura a origem usando `VERCEL_PROJECT_PRODUCTION_URL`, ou `DEPLOYMENT_ORIGIN` quando definido explicitamente.
+O projeto usa Node.js 24, `npm run build` e o diretório estático `public`. Os endpoints ficam em `api/`. O build copia o script público para `redator-groq.js` e `hub.js`, gera `bookmarklet.txt` e `favorito-redator-groq.html` e configura a origem usando `VERCEL_PROJECT_PRODUCTION_URL`, ou `DEPLOYMENT_ORIGIN` quando definido explicitamente.
 
 A proteção de login da Vercel não deve interceptar os endpoints usados pelo console: eles precisam responder ao navegador em qualquer origem. `/api/generate` aceita requisições públicas, sem cabeçalho de autorização. O servidor controla os modelos, o prompt, o tamanho do texto e os limites de geração.
 
