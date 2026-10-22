@@ -150,14 +150,36 @@ test('CORS preflight is public but never invokes the provider or exposes credent
   let calls = 0;
   global.fetch = async () => { calls += 1; throw new Error('not expected'); };
   delete process.env.GROQ_API_KEY;
-  const { res } = await invoke({ method: 'OPTIONS', authorization: null });
+  const requestedHeaders = ['content-type', 'request-id', 'request-context', 'traceparent', 'tracestate', 'baggage'];
+  const { res } = await invoke({ method: 'OPTIONS', authorization: null, headers: {
+    origin: 'https://saladofuturo.educacao.sp.gov.br',
+    'access-control-request-method': 'POST',
+    'access-control-request-headers': requestedHeaders.join(', '),
+  } });
   assert.equal(res.statusCode, 204);
   assert.equal(res.headers['access-control-allow-origin'], '*');
   assert.match(String(res.headers['access-control-allow-methods']), /POST/);
   assert.match(String(res.headers['access-control-allow-methods']), /OPTIONS/);
-  assert.match(String(res.headers['access-control-allow-headers']).toLowerCase(), /content-type/);
+  const allowedHeaders = String(res.headers['access-control-allow-headers']).toLowerCase().split(/\s*,\s*/);
+  assert.deepEqual(new Set(allowedHeaders), new Set(requestedHeaders));
   assert.match(String(res.headers['access-control-expose-headers']).toLowerCase(), /retry-after/);
   assert.equal(calls, 0);
+});
+
+test('health permits a traced cross-origin GET preflight without provider configuration', async () => {
+  delete process.env.GROQ_API_KEY;
+  const { res } = await invoke({ method: 'OPTIONS', headers: {
+    origin: 'https://saladofuturo.educacao.sp.gov.br',
+    'access-control-request-method': 'GET',
+    'access-control-request-headers': 'request-id, traceparent',
+  } }, health);
+  assert.equal(res.statusCode, 204);
+  assert.equal(res.headers['access-control-allow-origin'], '*');
+  assert.match(res.headers['access-control-allow-methods'], /GET/);
+  const allowedHeaders = res.headers['access-control-allow-headers'].toLowerCase().split(/\s*,\s*/);
+  assert.ok(allowedHeaders.includes('request-id'));
+  assert.ok(allowedHeaders.includes('traceparent'));
+  assert.equal(res.body, null);
 });
 
 test('anonymous requests do not require a token and an extraneous authorization header is ignored', async () => {

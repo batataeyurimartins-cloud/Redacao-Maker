@@ -49,6 +49,8 @@ A proteção de login da Vercel não deve interceptar os endpoints usados pelo c
 - `POST /api/generate`: recebe `{context, theme, genre, words, instructions, model}` sem credenciais no navegador. Retorna `choices[0].message.content` e `finish_reason`.
 - `OPTIONS /api/generate`: permite o preflight CORS, sem executar uma geração.
 
+O CORS também permite os cabeçalhos de rastreamento `Request-Id`, `Request-Context`, `Traceparent`, `Tracestate` e `Baggage`. Algumas páginas, como a Sala do Futuro, acrescentam esses cabeçalhos automaticamente ao `fetch`. Eles não são usados como autenticação nem repassados à Groq.
+
 O servidor limita a referência a 18.000 caracteres, aceita os dois modelos indicados, monta o prompt e usa até 2.800 tokens de saída. O tipo pode ser `dissertativa`, `enem` ou `expositiva`; a extensão aproximada pode ser 250, 350, 500 ou 700 palavras. O servidor espera até 80 segundos pela Groq; o cliente espera até 90 segundos pelo servidor.
 
 Os modelos GPT-OSS são servidos pela própria Groq e usam a chave Groq configurada. A chamada usa raciocínio baixo e retorna somente a redação. Os modelos Llama anteriores foram desativados para contas gratuitas/developer em agosto de 2026.

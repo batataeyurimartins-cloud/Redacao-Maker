@@ -25,7 +25,8 @@ const GENRES = {
 function headers(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // A instrumentação da página pode acrescentar estes cabeçalhos ao fetch.
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Request-Id, Request-Context, Traceparent, Tracestate, Baggage');
   res.setHeader('Access-Control-Expose-Headers', 'Retry-After');
   res.setHeader('Access-Control-Max-Age', '600');
   res.setHeader('Cache-Control', 'no-store');
