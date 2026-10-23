@@ -74,7 +74,7 @@
       const body = await response.text();
       if (cancelled || disposed) return;
       finished = true;
-      const delivered = send('redator-groq:response', {
+      const delivered = send('redator-batata:response', {
         status:response.status,
         body,
         retryAfter:response.headers.get('retry-after') || ''
@@ -88,7 +88,7 @@
         ? 'O servidor demorou para responder. A solicitação foi interrompida; tente novamente no hub.'
         : 'Não foi possível conectar ao servidor. Confira sua internet e tente novamente no hub.';
       setStatus(message, 'error');
-      send('redator-groq:error', { message });
+      send('redator-batata:error', { message });
     } finally {
       clearTimeout(requestTimeout);
       controller = null;
@@ -100,33 +100,33 @@
     if (disposed || finished || event.source !== peer || event.origin !== parentOrigin) return;
     const data = event.data;
     if (!data || typeof data !== 'object' || data.channel !== channel) return;
-    if (data.type === 'redator-groq:cancel') {
+    if (data.type === 'redator-batata:cancel') {
       cancelled = true;
       stopRelay();
       manualOpen.disabled = false;
       setStatus('Geração cancelada. Volte ao hub para tentar novamente.');
       return;
     }
-    if (data.type !== 'redator-groq:generate' || started) return;
+    if (data.type !== 'redator-batata:generate' || started) return;
     if (!data.input || typeof data.input !== 'object' || Array.isArray(data.input)) return;
     generate(data.input);
   }
 
   manualOpen.addEventListener('click', () => {
     if (manualOpen.disabled) return;
-    send('redator-groq:manual');
+    send('redator-batata:manual');
     cancelled = true;
     stopRelay();
     manualOpen.disabled = true;
     setStatus('Abrindo o hub… Cole seu texto no campo de referência antes de gerar.');
-    const hadHub = Boolean(document.getElementById('redator-groq-console'));
+    const hadHub = Boolean(document.getElementById('redator-batata-console'));
     const script = document.createElement('script');
     script.src = '/hub.js';
     script.onload = () => {
       script.remove();
       manualOpen.disabled = false;
       if (!hadHub) {
-        const shadow = document.getElementById('redator-groq-console')?.shadowRoot;
+        const shadow = document.getElementById('redator-batata-console')?.shadowRoot;
         const input = shadow?.getElementById('context');
         if (input) {
           input.value = '';
@@ -166,7 +166,7 @@
 
   window.addEventListener('message', receive);
   function announceReady() {
-    if (!send('redator-groq:ready')) {
+    if (!send('redator-batata:ready')) {
       stopRelay();
       setStatus('A conexão com a página anterior não está disponível. Abra o hub nesta janela e cole seu texto de referência.');
     }

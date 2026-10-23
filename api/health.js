@@ -19,8 +19,8 @@ module.exports = function health(req, res) {
     res.end(JSON.stringify({ error: { code: 'method_not_allowed', message: 'Use GET para consultar o estado do serviço.' } }));
     return;
   }
-  const groq = (process.env.GROQ_API_KEY || '').trim();
-  const configured = Boolean(groq && !/\s/.test(groq));
+  const apiKey = (process.env.BATATA_API_KEY || process.env.GROQ_API_KEY || '').trim();
+  const configured = Boolean(apiKey && !/\s/.test(apiKey));
   res.statusCode = 200;
-  res.end(JSON.stringify({ service: 'redator-groq', configured, provider: 'groq', publicAccess: true }));
+  res.end(JSON.stringify({ service: 'batata', configured, publicAccess: true }));
 };

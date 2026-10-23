@@ -19,7 +19,7 @@ let browser;
 let script;
 
 before(async () => {
-  script = fs.readFileSync(path.join(__dirname, '..', 'redator-groq.js'), 'utf8');
+  script = fs.readFileSync(path.join(__dirname, '..', 'redator-batata.js'), 'utf8');
   browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
     headless: true,
@@ -61,7 +61,7 @@ function html(content = '') {
 }
 
 function control(page, id) {
-  return page.locator(`#redator-groq-console >> #${id}`);
+  return page.locator(`#redator-batata-console >> #${id}`);
 }
 
 async function json(route, status, payload) {
@@ -112,7 +112,7 @@ async function fixture(t, options = {}) {
   await page.goto(`${origin}${routePath}`);
   if (options.clock) await page.clock.install();
   await page.addScriptTag({ content: script });
-  await page.locator('#redator-groq-console').waitFor();
+  await page.locator('#redator-batata-console').waitFor();
   await control(page, 'open-source').click();
   await control(page, 'context').fill('Bibliotecas públicas oferecem acesso gratuito à internet e formação digital.');
   await control(page, 'save-source').click();
@@ -122,7 +122,7 @@ async function fixture(t, options = {}) {
 
 async function ready(page) {
   await page.waitForFunction(() => {
-    const root = document.getElementById('redator-groq-console')?.shadowRoot;
+    const root = document.getElementById('redator-batata-console')?.shadowRoot;
     return root && !root.getElementById('generate').disabled;
   }, null, { timeout: 5000 });
 }
@@ -361,7 +361,7 @@ test('serializes explicit fill retries behind an interrupted background write an
     window.manualRetryCount = 0;
     document.addEventListener('input', event => {
       if (event.target.id !== 'host-title' || event.target.value !== title || window.manualRetryCount) return;
-      const root = document.getElementById('redator-groq-console').shadowRoot;
+      const root = document.getElementById('redator-batata-console').shadowRoot;
       window.retryDuringFill = {
         title: event.target.value,
         essay: document.getElementById('host-essay').value,
@@ -411,12 +411,12 @@ test('closing the hub disposes its pending search before new fields mount', asyn
   await generate(page);
   await waiting(page);
   await control(page, 'close').click();
-  await page.locator('#redator-groq-console').waitFor({ state: 'detached' });
+  await page.locator('#redator-batata-console').waitFor({ state: 'detached' });
   await append(page);
   await page.waitForTimeout(1250);
   await expectOriginal(page);
   await page.addScriptTag({ content: script });
-  await page.locator('#redator-groq-console').waitFor();
+  await page.locator('#redator-batata-console').waitFor();
   await page.waitForTimeout(1250);
   await expectOriginal(page);
   assert.equal(await control(page, 'result').inputValue(), '');
@@ -427,7 +427,7 @@ test('reinjecting the same version preserves one search without duplicate fills'
   await generate(page);
   await waiting(page);
   await page.addScriptTag({ content: script });
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
   await append(page);
   await expectFilled(page);
   await page.waitForTimeout(1250);
@@ -440,9 +440,9 @@ test('replacing an older hub version disposes its search and keeps the new resul
   const { page } = await fixture(t);
   await generate(page);
   await waiting(page);
-  await page.evaluate(() => { document.getElementById('redator-groq-console').dataset.redatorVersion = 'old-fixture-version'; });
+  await page.evaluate(() => { document.getElementById('redator-batata-console').dataset.redatorVersion = 'old-fixture-version'; });
   await page.addScriptTag({ content: script });
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
   await append(page);
   await page.waitForTimeout(1250);
   await expectOriginal(page);

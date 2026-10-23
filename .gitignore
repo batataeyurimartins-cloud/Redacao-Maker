@@ -6,8 +6,11 @@ scratch/
 publish/
 *.zip
 redator-groq-pessoal.js
+redator-batata-pessoal.js
 acesso-privado*
 public/redator-groq.js
+public/redator-batata.js
 public/hub.js
 public/bookmarklet.txt
 public/favorito-redator-groq.html
+public/favorito-batata.html

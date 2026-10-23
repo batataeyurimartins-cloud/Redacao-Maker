@@ -26,9 +26,9 @@ let bookmarkImport;
 before(async () => {
   installation = fs.readFileSync(path.join(publicDirectory, 'index.html'), 'utf8');
   hubScript = fs.readFileSync(path.join(publicDirectory, 'hub.js'), 'utf8');
-  fullScript = fs.readFileSync(path.join(publicDirectory, 'redator-groq.js'), 'utf8');
+  fullScript = fs.readFileSync(path.join(publicDirectory, 'redator-batata.js'), 'utf8');
   bookmarkText = fs.readFileSync(path.join(publicDirectory, 'bookmarklet.txt'), 'utf8').trim();
-  bookmarkImport = fs.readFileSync(path.join(publicDirectory, 'favorito-redator-groq.html'), 'utf8');
+  bookmarkImport = fs.readFileSync(path.join(publicDirectory, 'favorito-batata.html'), 'utf8');
   const executablePath = process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
   browser = await chromium.launch({ executablePath, headless: true,
     args: ['--no-sandbox', '--disable-dev-shm-usage'] });
@@ -74,18 +74,18 @@ async function mount(t, clipboard = 'success') {
         hubRequests.push(request.url());
         return route.fulfill({ status: 200, contentType: 'text/javascript', body: hubScript });
       }
-      if (url.pathname === '/redator-groq.js') {
+      if (url.pathname === '/redator-batata.js') {
         return route.fulfill({ status: 200, contentType: 'text/javascript', body: fullScript });
       }
       if (url.pathname === '/bookmarklet.txt') {
         return route.fulfill({ status: 200, contentType: 'text/plain', body: bookmarkText });
       }
-      if (url.pathname === '/favorito-redator-groq.html') {
+      if (url.pathname === '/favorito-batata.html') {
         return route.fulfill({ status: 200, contentType: 'text/html', body: bookmarkImport });
       }
       if (url.pathname === '/api/health') {
         return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders(),
-          body: JSON.stringify({ service: 'redator-groq', provider: 'groq', configured: true, publicAccess: true }) });
+          body: JSON.stringify({ service: 'batata', configured: true, publicAccess: true }) });
       }
       if (url.pathname === '/api/generate') {
         if (request.method() === 'OPTIONS') {
@@ -112,18 +112,18 @@ function assertPublicBookmarklet(href) {
   assert.match(href, /^javascript:/i, 'the full bookmark URL must retain its javascript: prefix');
   const source = decodeURIComponent(href.slice('javascript:'.length));
   assert.ok(source.includes(`${PUBLIC_ORIGIN}/hub.js`), 'the bookmark must load the canonical public hub');
-  assert.doesNotMatch(source, /gsk_|Bearer\s|GROQ_API_KEY|authorization|password|x-api-key/i);
+  assert.doesNotMatch(source, /gsk_|Bearer\s|(?:BATATA|GROQ)_API_KEY|authorization|password|x-api-key/i);
 }
 
 function control(page, id) {
-  return page.locator(`#redator-groq-console >> #${id}`);
+  return page.locator(`#redator-batata-console >> #${id}`);
 }
 
 async function activateBookmarklet(page, href) {
   // Assignment uses the browser's JavaScript-URL behavior on the current document.
   // page.goto() intentionally does not support javascript: URLs.
   await page.evaluate(value => { window.location.href = value; }, href);
-  await page.locator('#redator-groq-console').waitFor();
+  await page.locator('#redator-batata-console').waitFor();
   await page.waitForFunction(() => ![...document.scripts].some(script => {
     if (!script.src) return false;
     const url = new URL(script.src);
@@ -180,15 +180,15 @@ test('executes on an existing page, removes its loader, and keeps one hub on rep
   assert.equal(page.url(), ARTICLE_URL);
   assert.equal(await page.locator('#existing-content').innerHTML(), originalContent);
   assert.equal(hubRequests.length, 1);
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
-  assert.equal(await page.locator('#redator-groq-console >> input[type="password"]').count(), 0);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console >> input[type="password"]').count(), 0);
   assert.doesNotMatch(await control(page, 'context').inputValue(), /SEGREDO_/);
   assert.match(await control(page, 'context').inputValue(), /Bibliotecas públicas/);
   await control(page, 'open-source').click();
   const draft = 'Uma referência revisada que deve sobreviver ao segundo clique no favorito.';
   await control(page, 'context').fill(draft);
   await activateBookmarklet(page, href);
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
   assert.equal(await control(page, 'context').inputValue(), draft);
   assert.equal(page.url(), ARTICLE_URL);
   assert.deepEqual(backendRequests, [], 'opening the bookmark must not generate an essay');
@@ -219,7 +219,7 @@ test('publishes matching text and Netscape import artifacts whose bookmark actua
   assert.match(bookmarkImport, /<!DOCTYPE NETSCAPE-Bookmark-file-1>/i);
   assert.match(bookmarkImport, /<DL\b/i);
   assert.match(bookmarkImport, /<DT>\s*<A\b/i);
-  await page.goto(`${PUBLIC_ORIGIN}/favorito-redator-groq.html`);
+  await page.goto(`${PUBLIC_ORIGIN}/favorito-batata.html`);
   const imported = page.locator('a[href^="javascript:"]');
   assert.equal(await imported.count(), 1);
   const importedHref = await imported.getAttribute('href');
@@ -227,7 +227,7 @@ test('publishes matching text and Netscape import artifacts whose bookmark actua
   await page.goto(ARTICLE_URL);
   await activateBookmarklet(page, importedHref);
   assert.equal(page.url(), ARTICLE_URL);
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
 });
 
 test('keeps both advanced console copy options working', async t => {

@@ -38,7 +38,7 @@ function deferred() {
 }
 
 function control(page, id) {
-  return page.locator(`#redator-groq-console >> #${id}`);
+  return page.locator(`#redator-batata-console >> #${id}`);
 }
 
 async function fixture(t, options = {}) {
@@ -61,7 +61,7 @@ async function fixture(t, options = {}) {
     }
     if (url.origin === SERVICE_ORIGIN && ['/connection.html', '/connection.js', '/hub.js'].includes(url.pathname)) {
       if (url.pathname === '/hub.js') hubLoads.push(request.url());
-      const filename = url.pathname === '/hub.js' ? 'redator-groq.js' : `public${url.pathname}`;
+      const filename = url.pathname === '/hub.js' ? 'redator-batata.js' : `public${url.pathname}`;
       return route.fulfill({ status:200,
         contentType:url.pathname.endsWith('.html') ? 'text/html' : 'application/javascript',
         body:fs.readFileSync(path.join(ROOT, filename), 'utf8') });
@@ -94,13 +94,13 @@ async function fixture(t, options = {}) {
   });
   if (options.ignoreReady) {
     await page.evaluate(() => window.addEventListener('message', event => {
-      if (event.data?.type === 'redator-groq:ready') event.stopImmediatePropagation();
+      if (event.data?.type === 'redator-batata:ready') event.stopImmediatePropagation();
     }, true));
   }
   if (options.hub !== false) {
     // DevTools evaluation installs the console snippet; browser CSP still applies to its fetch.
-    await page.evaluate(fs.readFileSync(path.join(ROOT, 'redator-groq.js'), 'utf8'));
-    await page.locator('#redator-groq-console').waitFor();
+    await page.evaluate(fs.readFileSync(path.join(ROOT, 'redator-batata.js'), 'utf8'));
+    await page.locator('#redator-batata-console').waitFor();
   }
   return { context, page, requests, hubLoads };
 }
@@ -118,7 +118,7 @@ async function configure(page) {
 }
 
 async function ready(page) {
-  await page.waitForFunction(() => !document.getElementById('redator-groq-console')?.shadowRoot?.getElementById('generate').disabled);
+  await page.waitForFunction(() => !document.getElementById('redator-batata-console')?.shadowRoot?.getElementById('generate').disabled);
 }
 
 async function blockedGeneration(page) {
@@ -156,7 +156,7 @@ async function openRelay(page) {
   await page.locator('#open-relay').click();
   const popup = await opened;
   await popup.locator('#connection-status').waitFor();
-  await page.waitForFunction(channel => window.__messages.some(event => event.data.type === 'redator-groq:ready' && event.data.channel === channel), CHANNEL);
+  await page.waitForFunction(channel => window.__messages.some(event => event.data.type === 'redator-batata:ready' && event.data.channel === channel), CHANNEL);
   return popup;
 }
 
@@ -211,7 +211,7 @@ test('parent rejects a response from another source, a wrong channel, and a navi
   const popup = await startFallback(page);
   await received.promise;
   const channel = new URLSearchParams(new URL(popup.url()).hash.slice(1)).get('channel');
-  const forged = { type:'redator-groq:response', channel, status:200, body:JSON.stringify(completion('RESULTADO_FALSO')), retryAfter:'' };
+  const forged = { type:'redator-batata:response', channel, status:200, body:JSON.stringify(completion('RESULTADO_FALSO')), retryAfter:'' };
   await popup.evaluate(message => window.opener.postMessage({ ...message, channel:'canal-incorreto' }, '*'), forged);
   const rogueOpened = page.waitForEvent('popup');
   await page.evaluate(url => window.__nativeOpen(url, '_blank'), `${SERVICE_ORIGIN}/spoof.html`);
@@ -227,7 +227,7 @@ test('parent rejects a response from another source, a wrong channel, and a navi
     window.addEventListener('message', event => event.source.postMessage(message, '*'), { once:true });
   }, forged);
   await page.evaluate(() => window.__relay.postMessage({ trigger:'forge' }, '*'));
-  await page.waitForFunction(origin => window.__messages.some(event => event.origin === origin && event.data.type === 'redator-groq:response'), OTHER_ORIGIN);
+  await page.waitForFunction(origin => window.__messages.some(event => event.origin === origin && event.data.type === 'redator-batata:response'), OTHER_ORIGIN);
   await flushMessages(page);
   assert.equal(await control(page, 'result').inputValue(), '');
   assert.equal(await control(page, 'generate').isDisabled(), true, 'the same WindowProxy at another origin must remain untrusted');
@@ -297,7 +297,7 @@ test('relay pins its opener, origin and channel and accepts only one generation'
   } });
   t.after(() => release.resolve());
   const popup = await openRelay(page);
-  const message = { type:'redator-groq:generate', channel:CHANNEL, input:INPUT };
+  const message = { type:'redator-batata:generate', channel:CHANNEL, input:INPUT };
   await page.evaluate(data => window.__relay.postMessage({ ...data, channel:'outro-canal' }, '*'), message);
   const rogueOpened = popup.waitForEvent('popup');
   await popup.evaluate(url => window.open(url, '_blank'), `${SERVICE_ORIGIN}/spoof.html`);
@@ -323,8 +323,8 @@ test('relay pins its opener, origin and channel and accepts only one generation'
   assert.deepEqual(requests[0].postDataJSON(), INPUT);
   assert.equal(new URL(requests[0].frame().url()).origin, SERVICE_ORIGIN);
   release.resolve();
-  await page.waitForFunction(() => window.__messages.some(event => event.data.type === 'redator-groq:response'));
-  const responses = await page.evaluate(() => window.__messages.filter(event => event.data.type === 'redator-groq:response'));
+  await page.waitForFunction(() => window.__messages.some(event => event.data.type === 'redator-batata:response'));
+  const responses = await page.evaluate(() => window.__messages.filter(event => event.data.type === 'redator-batata:response'));
   assert.equal(responses.length, 1);
   assert.equal(responses[0].origin, SERVICE_ORIGIN);
   assert.equal(responses[0].data.channel, CHANNEL);
@@ -342,11 +342,11 @@ test('a standalone connection page opens its own hub only after the manual actio
   const standalone = await context.newPage();
   await standalone.goto(`${SERVICE_ORIGIN}/connection.html`);
   assert.match(await standalone.locator('#connection-status').textContent(), /cole|referência/i);
-  assert.equal(await standalone.locator('#redator-groq-console').count(), 0);
+  assert.equal(await standalone.locator('#redator-batata-console').count(), 0);
   assert.equal(hubLoads.length, 0);
   assert.equal(requests.length, 0);
   await standalone.locator('#manual-open').click();
-  await standalone.locator('#redator-groq-console').waitFor();
+  await standalone.locator('#redator-batata-console').waitFor();
   assert.equal(await control(standalone, 'context').inputValue(), '', 'relay instructions must not become a source draft');
   assert.equal(hubLoads.length, 1);
   assert.match(await standalone.locator('#connection-status').textContent(), /cole.*referência|hub aberto/i);

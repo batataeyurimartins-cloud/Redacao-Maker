@@ -1,12 +1,12 @@
 {
-  "name": "redator-groq-console",
-  "version": "1.9.0",
+  "name": "batata-redacao",
+  "version": "1.10.0",
   "private": true,
-  "description": "Hub preto e compacto para redações em português com a API Groq, direto no console",
+  "description": "Hub preto e compacto para redações em português com geração por IA, direto no console",
   "scripts": {
     "build": "node scripts/build.cjs",
     "test": "node --test tests/*.test.cjs",
-    "check": "node --check redator-groq.js && node --check public/connection.js && node --check api/generate.js && node --check api/health.js && node --check scripts/build.cjs"
+    "check": "node --check redator-batata.js && node --check public/connection.js && node --check api/generate.js && node --check api/health.js && node --check scripts/build.cjs"
   },
   "engines": { "node": "24.x" },
   "devDependencies": {

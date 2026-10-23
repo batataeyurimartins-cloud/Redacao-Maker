@@ -18,7 +18,7 @@ let browser;
 let script;
 
 before(async () => {
-  script = fs.readFileSync(path.join(__dirname, '..', 'redator-groq.js'), 'utf8');
+  script = fs.readFileSync(path.join(__dirname, '..', 'redator-batata.js'), 'utf8');
   browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
     headless: true,
@@ -58,7 +58,7 @@ function deferred() {
 }
 
 function control(page, id) {
-  return page.locator(`#redator-groq-console >> #${id}`);
+  return page.locator(`#redator-batata-console >> #${id}`);
 }
 
 async function json(route, status, payload) {
@@ -101,7 +101,7 @@ async function fixture(t, options = {}) {
   const page = await context.newPage();
   await page.goto(`${ORIGIN}/`);
   await page.addScriptTag({ content: script });
-  await page.locator('#redator-groq-console').waitFor();
+  await page.locator('#redator-batata-console').waitFor();
   await control(page, 'open-source').click();
   await control(page, 'context').fill('Bibliotecas públicas oferecem acesso gratuito à internet e formação digital.');
   await control(page, 'save-source').click();
@@ -111,7 +111,7 @@ async function fixture(t, options = {}) {
 
 async function ready(page) {
   await page.waitForFunction(() => {
-    const root = document.getElementById('redator-groq-console')?.shadowRoot;
+    const root = document.getElementById('redator-batata-console')?.shadowRoot;
     return root && !root.getElementById('generate').disabled;
   }, null, { timeout: 5000 });
 }
@@ -304,7 +304,7 @@ test('cancels between automatic title and essay updates and restores the origina
       if(window.fillCancellationCount)return;
       window.fillCancellationCount++;
       setTimeout(()=>{
-        const root=document.getElementById('redator-groq-console').shadowRoot;
+        const root=document.getElementById('redator-batata-console').shadowRoot;
         window.cancellationSnapshot={
           title:document.querySelector('[data-host-title]').value,
           essay:document.querySelector('[data-host-essay]').value,

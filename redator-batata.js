@@ -2,13 +2,18 @@
   'use strict';
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
-  const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.9.0';
+  const PANEL_ID = 'redator-batata-console';
+  const VERSION = '1.10.0';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
   const TIMEOUT_MS = 90000;
   const BLOCKED_CONNECTION_MESSAGE = 'Esta página bloqueia conexões externas por CSP. Clique em Gerar em janela auxiliar para tentar pela conexão do serviço.';
+  const previousBrand = document.getElementById('redator-groq-console');
+  if (previousBrand) {
+    previousBrand.shadowRoot?.getElementById('close')?.click();
+    previousBrand.remove();
+  }
   let existing = document.getElementById(PANEL_ID);
   if (existing && existing.dataset.redatorVersion !== VERSION) {
     const previousClose = existing.shadowRoot?.getElementById('close');
@@ -32,7 +37,7 @@
     return;
   }
   if (!document.body || !document.documentElement || !window.AbortController) {
-    console.warn('Redator Groq: abra uma página HTML em um navegador atualizado.');
+    console.warn('Batata: abra uma página HTML em um navegador atualizado.');
     return;
   }
 
@@ -254,8 +259,8 @@
     element('div', { className:'settings' }, [setting('source','Referência'),setting('genre','Tipo'),setting('words','Extensão'),setting('writing','Tema'),setting('result','Redação')]),
     element('div', { className:'generate-row' }, [generate,cancel]),status,retryConnection,connectionHelp
   ]);
-  const main = element('section', { id:'main-panel', className:'card main', role:'region', 'aria-label':'Redator Groq', 'data-secondary-open':'false' }, [
-    element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Redator'),element('span',{ className:'badge' },'GROQ'),element('span',{ id:'version', className:'badge', title:'Versão do hub' },`v${VERSION}`)]),minimize,close]),body
+  const main = element('section', { id:'main-panel', className:'card main', role:'region', 'aria-label':'Batata', 'data-secondary-open':'false' }, [
+    element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Batata'),element('span',{ className:'badge' },'HUB'),element('span',{ id:'version', className:'badge', title:'Versão do hub' },`v${VERSION}`)]),minimize,close]),body
   ]);
   const saveSource = element('button', { id:'save-source', type:'button', className:'primary full' }, 'Usar este texto');
   const saveWriting = element('button', { id:'save-writing', type:'button', className:'primary full' }, 'Usar estas instruções');
@@ -276,7 +281,7 @@
     source:element('div',{ id:'pane-source', className:'pane', hidden:true },[
       element('div',{ className:'row' },[capturePage,captureSelection]),
       element('label',{ htmlFor:'context' },'Texto de referência'),contextInput,counter,
-      element('p',{ id:'context-help', className:'muted' },'Confira o conteúdo antes de gerar. Este texto será enviado à Groq.'),saveSource
+      element('p',{ id:'context-help', className:'muted' },'Confira o conteúdo antes de gerar. Este texto será enviado para gerar a redação.'),saveSource
     ]),
     genre:element('div',{ id:'pane-genre', className:'pane', hidden:true },[levelInput,...levelOptions.map(([value,label,desc]) => choice('level',value,`${value} — ${label}`,desc))]),
     words:element('div',{ id:'pane-words', className:'pane', hidden:true },[wordsInput,...wordOptions.map(([value,desc]) => choice('words',value,`${value} palavras`,desc))]),
@@ -488,7 +493,7 @@
 
     function excluded(node) {
       for (let current = node; current; current = parentOf(current)) {
-        if (current === excludeRoot || current.id === 'redator-groq-console') return true;
+        if (current === excludeRoot || current.id === 'redator-batata-console') return true;
       }
       return false;
     }
@@ -991,7 +996,7 @@
         const cancel = () => finish(null);
         pendingPick = cancel;
         function click(event) {
-          if (event.composedPath().some(node => node === excludeRoot || node?.id === 'redator-groq-console')) return;
+          if (event.composedPath().some(node => node === excludeRoot || node?.id === 'redator-batata-console')) return;
           event.preventDefault(); event.stopImmediatePropagation();
           const target = fieldFrom(event.composedPath()[0]);
           if (!editable(target, kind) || target === pinned[kind === 'title' ? 'essay' : 'title']) {
@@ -1000,7 +1005,7 @@
           finish(target);
         }
         function pointer(event) {
-          if (!event.composedPath().some(node => node === excludeRoot || node?.id === 'redator-groq-console')) { event.preventDefault(); event.stopImmediatePropagation(); }
+          if (!event.composedPath().some(node => node === excludeRoot || node?.id === 'redator-batata-console')) { event.preventDefault(); event.stopImmediatePropagation(); }
         }
         function key(event) { if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); cancel(); } }
         for (const doc of documents) for (const [event, handler] of [['click', click], ['pointerdown', pointer], ['keydown', key]]) {
@@ -1203,15 +1208,15 @@
     const messages = {
       400:'A solicitação foi recusada. Confira as opções e o texto de referência.',
       401:'O servidor recusou a solicitação. Recarregue o script ou tente novamente mais tarde.',
-      402:'Sua conta Groq precisa de saldo ou de uma alteração no plano.',
+      402:'O serviço precisa de saldo ou de uma alteração no plano.',
       403:'A API negou o acesso à solicitação. Tente novamente mais tarde.',
       404:'O serviço não foi encontrado. Reabra o favorito e tente novamente.',
-      413:'O texto excedeu o limite aceito pela Groq. Reduza o texto de referência.',
+      413:'O texto excedeu o limite do serviço. Reduza o texto de referência.',
       429:'Limite de uso atingido. Aguarde antes de tentar novamente.',
-      503:'O administrador ainda precisa configurar GROQ_API_KEY na Vercel.',
-      504:'A Groq demorou para responder. Tente novamente em instantes.'
+      503:'A geração ainda não foi configurada no servidor.',
+      504:'O Batata demorou para responder. Tente novamente em instantes.'
     };
-    let message = messages[response.status] || (response.status >= 500 ? 'A Groq está indisponível no momento. Tente novamente em instantes.' : 'Não foi possível concluir a solicitação à Groq.');
+    let message = messages[response.status] || (response.status >= 500 ? 'O Batata está indisponível no momento. Tente novamente em instantes.' : 'Não foi possível concluir a solicitação ao Batata.');
     const retry = response.headers.get('retry-after');
     if (response.status === 429 && retry && /^\d+(\.\d+)?$/.test(retry)) message += ` Aguarde cerca de ${Math.ceil(Number(retry))} segundos.`;
     if ([400,404,502,503].includes(response.status) && typeof payload?.error?.message === 'string') {
@@ -1252,19 +1257,19 @@
         else resolve(response);
       }
       function abort() {
-        try { popup?.postMessage({type:'redator-groq:cancel',channel},SERVICE_ORIGIN); } catch { /* A janela já pode ter fechado. */ }
+        try { popup?.postMessage({type:'redator-batata:cancel',channel},SERVICE_ORIGIN); } catch { /* A janela já pode ter fechado. */ }
         finish(new Error('Solicitação interrompida.'));
       }
       function receive(event) {
         const message = event.data;
         if (event.source !== popup || event.origin !== SERVICE_ORIGIN || !message || message.channel !== channel) return;
-        if (message.type === 'redator-groq:manual') {
+        if (message.type === 'redator-batata:manual') {
           finish(new Error('Continue no hub da janela auxiliar e cole a referência por lá.'),null,false);
-        } else if (message.type === 'redator-groq:ready' && !sent) {
+        } else if (message.type === 'redator-batata:ready' && !sent) {
           sent = true;
           clearTimeout(handshake);
-          popup.postMessage({type:'redator-groq:generate',channel,input},SERVICE_ORIGIN);
-        } else if (sent && message.type === 'redator-groq:response') {
+          popup.postMessage({type:'redator-batata:generate',channel,input},SERVICE_ORIGIN);
+        } else if (sent && message.type === 'redator-batata:response') {
           if (!Number.isInteger(message.status) || message.status < 200 || message.status > 599 || typeof message.body !== 'string' || message.body.length > 131072) {
             finish(new Error('A janela auxiliar devolveu uma resposta inválida.'));
             return;
@@ -1273,7 +1278,7 @@
           if (typeof message.retryAfter === 'string' && /^\d+(\.\d+)?$/.test(message.retryAfter)) headers.set('Retry-After',message.retryAfter);
           try { finish(null,new Response(message.body || null,{status:message.status,headers})); }
           catch { finish(new Error('A janela auxiliar devolveu uma resposta inválida.')); }
-        } else if (sent && message.type === 'redator-groq:error') {
+        } else if (sent && message.type === 'redator-batata:error') {
           finish(new Error(typeof message.message === 'string' ? message.message.slice(0,350) : 'Não foi possível conectar pela janela auxiliar.'));
         }
       }
@@ -1475,7 +1480,7 @@
     retryConnection.hidden = true;
     connectionHelp.hidden = true;
     connectionBlockedByPolicy = false;
-    setStatus('Gerando a redação com a Groq… Você pode cancelar a solicitação.');
+    setStatus('Gerando a redação com o Batata… Você pode cancelar a solicitação.');
     try {
       const input = createRequest();
       const response = useConnectionWindow ? await fetchInConnectionWindow(input,request.controller.signal) : await fetch(API_URL, {
@@ -1491,7 +1496,7 @@
       catch {
         if (request.controller.signal.aborted) throw new Error('aborted');
         if (!response.ok) throw httpError(response,null);
-        throw new Error('A Groq devolveu uma resposta inválida. Tente novamente.');
+        throw new Error('O Batata devolveu uma resposta inválida. Tente novamente.');
       }
       if (!response.ok) throw httpError(response,payload);
       if (request.controller.signal.aborted || closed) return;
@@ -1523,7 +1528,7 @@
     } catch (error) {
       if (closed) return;
       if (request.controller.signal.aborted) {
-        setStatus(request.reason === 'timeout' ? 'A Groq demorou mais de 90 segundos. A solicitação foi interrompida; tente novamente.' : 'Geração cancelada. Você pode tentar novamente.','warning');
+        setStatus(request.reason === 'timeout' ? 'O Batata demorou mais de 90 segundos. A solicitação foi interrompida; tente novamente.' : 'Geração cancelada. Você pode tentar novamente.','warning');
         generatedNotice?.();
         hubMotion.toast({id:'generation-error',title:request.reason === 'timeout' ? 'Tempo de espera esgotado' : 'Geração cancelada',message:'Você pode tentar novamente quando quiser.',kind:'warning'});
       } else if (error instanceof TypeError) {
@@ -1692,7 +1697,7 @@
   download.addEventListener('click',() => {
     if (!resultInput.value) return;
     const url = URL.createObjectURL(new Blob([resultInput.value],{ type:'text/plain;charset=utf-8' }));
-    const anchor = element('a',{ href:url, download:'redacao-groq.txt' });
+    const anchor = element('a',{ href:url, download:'redacao-batata.txt' });
     shadow.append(anchor);
     anchor.click();
     anchor.remove();

@@ -19,7 +19,7 @@ let browser;
 let script;
 
 before(async () => {
-  script = fs.readFileSync(path.join(__dirname, '..', 'redator-groq.js'), 'utf8');
+  script = fs.readFileSync(path.join(__dirname, '..', 'redator-batata.js'), 'utf8');
   browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
     headless: true,
@@ -61,7 +61,7 @@ function documentWith(content, behavior = '', pageRoot = 'main') {
 }
 
 function control(page, id) {
-  return page.locator(`#redator-groq-console >> #${id}`);
+  return page.locator(`#redator-batata-console >> #${id}`);
 }
 
 async function fixture(t, { content = muiPair(), behavior = '', origin = ORIGIN, routePath = '/atividade/fixture?eRedacao=true', pageRoot = 'main' } = {}) {
@@ -101,7 +101,7 @@ async function fixture(t, { content = muiPair(), behavior = '', origin = ORIGIN,
   page = await context.newPage();
   await page.goto(`${origin}${routePath}`);
   await page.addScriptTag({ content: script });
-  await page.locator('#redator-groq-console').waitFor();
+  await page.locator('#redator-batata-console').waitFor();
   await control(page, 'open-source').click();
   await control(page, 'context').fill('Bibliotecas públicas oferecem acesso gratuito à internet e formação digital.');
   await control(page, 'save-source').click();
@@ -114,7 +114,7 @@ async function generate(page) {
   const response = page.waitForResponse(API_URL, { timeout: 5000 });
   await control(page, 'generate').click();
   await response;
-  await page.waitForFunction(() => !document.getElementById('redator-groq-console').shadowRoot.getElementById('generate').disabled, null, { timeout: 5000 });
+  await page.waitForFunction(() => !document.getElementById('redator-batata-console').shadowRoot.getElementById('generate').disabled, null, { timeout: 5000 });
   assert.equal(await control(page, 'result-title').inputValue(), TITLE);
   assert.equal(await control(page, 'result').inputValue(), ESSAY);
 }

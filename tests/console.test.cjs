@@ -4,7 +4,7 @@ const path = require('node:path');
 const { test, before, after } = require('node:test');
 const { chromium } = require('playwright');
 
-const scriptPath = path.join(__dirname, '..', 'redator-groq.js');
+const scriptPath = path.join(__dirname, '..', 'redator-batata.js');
 const API_URL = process.env.HUB_API_URL || 'https://redacao-maker.vercel.app/api/generate';
 const fixture = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Tema de redação</title></head>
 <body><nav>MENU_QUE_NAO_E_FONTE</nav><main><h1>A inclusão digital no Brasil</h1>
@@ -36,7 +36,7 @@ async function mount(t, handler = async route => jsonResponse(route, 200, reply(
   const page = await context.newPage();
   const directProviderRequests = [];
   t.after(() => context.close());
-  t.after(() => assert.deepEqual(directProviderRequests, [], 'the browser must not call Groq directly'));
+  t.after(() => assert.deepEqual(directProviderRequests, [], 'the browser must not call the provider directly'));
   await page.route('**/*', async route => {
     if (new URL(route.request().url()).hostname === 'api.groq.com') {
       directProviderRequests.push(route.request().url());
@@ -59,7 +59,7 @@ async function mount(t, handler = async route => jsonResponse(route, 200, reply(
   });
   await page.goto('http://fixture.redator.test/');
   await page.addScriptTag({ content: script });
-  await page.locator('#redator-groq-console').waitFor();
+  await page.locator('#redator-batata-console').waitFor();
   return page;
 }
 
@@ -75,7 +75,7 @@ async function jsonResponse(route, status, body, extraHeaders = {}) {
 }
 
 function control(page, id) {
-  return page.locator(`#redator-groq-console >> #${id}`);
+  return page.locator(`#redator-batata-console >> #${id}`);
 }
 
 async function openPane(page, pane) {
@@ -102,7 +102,7 @@ async function configure(page, context = 'A inclusão digital ainda enfrenta bar
 async function waitReady(page) {
   await control(page, 'generate').waitFor({ state: 'visible' });
   await page.waitForFunction(() => {
-    const root = document.querySelector('#redator-groq-console')?.shadowRoot;
+    const root = document.querySelector('#redator-batata-console')?.shadowRoot;
     return root && !root.querySelector('#generate').disabled;
   });
 }
@@ -170,7 +170,7 @@ test('sends anonymous requests with edited context and settings and renders outp
   assert.equal(await control(page, 'result').inputValue(), output);
   assert.equal(await control(page, 'pane-result').isVisible(), true);
   assert.equal(await page.evaluate(() => window.PWNED), undefined);
-  assert.equal(await page.locator('#redator-groq-console >> img').count(), 0);
+  assert.equal(await page.locator('#redator-batata-console >> img').count(), 0);
 });
 
 test('repeated execution keeps a single panel and preserves the user draft', async t => {
@@ -179,14 +179,14 @@ test('repeated execution keeps a single panel and preserves the user draft', asy
   await control(page, 'context').fill('Um contexto já revisado pelo usuário.');
   await control(page, 'save-source').click();
   await page.addScriptTag({ content: script });
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
   assert.equal(await control(page, 'context').inputValue(), 'Um contexto já revisado pelo usuário.');
 });
 
 for (const [status, pattern] of [
   [401, /serviço|servidor|autentica|inválid|401/i],
   [429, /limite|muitas|aguard|429|requisiç/i],
-  [500, /groq|servidor|tente|500|indispon/i],
+  [500, /batata|servidor|tente|500|indispon/i],
 ]) {
   test(`handles HTTP ${status} and permits a successful retry`, async t => {
     let calls = 0;
@@ -270,7 +270,7 @@ test('closing the panel aborts a pending generation and removes the UI', async t
   const failed = page.waitForEvent('requestfailed', { predicate: request => request.url() === API_URL });
   await control(page, 'close').click();
   await failed;
-  assert.equal(await page.locator('#redator-groq-console').count(), 0);
+  assert.equal(await page.locator('#redator-batata-console').count(), 0);
 });
 
 test('never persists reference text or writing settings in browser storage', async t => {
@@ -443,7 +443,7 @@ test('starts with a compact dark hub in the bottom-right corner and no secondary
     assert.equal(await control(page, id).count(), 0, `${id} must not be part of the hub`);
   }
   assert.equal(await control(page, 'api-key').count(), 0);
-  assert.equal(await page.locator('#redator-groq-console >> input[type="password"]').count(), 0);
+  assert.equal(await page.locator('#redator-batata-console >> input[type="password"]').count(), 0);
   assert.doesNotMatch(script, /PERSONAL_ACCESS_TOKEN|HUB_ACCESS_TOKEN/);
 });
 
@@ -464,7 +464,7 @@ test('level and word choices open opposite the hub, close after selection, and a
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
   assert.match(await control(page, 'summary-genre').textContent(), /4/);
   assert.equal(await control(page, 'level').inputValue(), '4');
-  assert.equal(await page.evaluate(() => document.querySelector('#redator-groq-console').shadowRoot.activeElement?.id), 'open-genre');
+  assert.equal(await page.evaluate(() => document.querySelector('#redator-batata-console').shadowRoot.activeElement?.id), 'open-genre');
   await openPane(page, 'words');
   await control(page, 'choice-words-500').click();
   await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
@@ -485,8 +485,8 @@ test('switching functions keeps exactly one secondary pane visible', async t => 
   await control(page, 'pane-writing').waitFor({ state: 'hidden' });
   assert.equal(await control(page, 'pane-writing').isVisible(), false);
   assert.equal(await control(page, 'pane-source').isVisible(), true);
-  assert.equal(await page.locator('#redator-groq-console >> [id^="pane-"]:visible').count(), 1);
-  assert.equal(await page.locator('#redator-groq-console >> #secondary-panel:visible').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console >> [id^="pane-"]:visible').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console >> #secondary-panel:visible').count(), 1);
 });
 
 test('Escape closes the secondary pane and restores focus to the triggering hub button', async t => {
@@ -495,7 +495,7 @@ test('Escape closes the secondary pane and restores focus to the triggering hub 
   await control(page, 'theme').focus();
   await page.keyboard.press('Escape');
   await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
-  assert.equal(await page.evaluate(() => document.querySelector('#redator-groq-console').shadowRoot.activeElement?.id), 'open-writing');
+  assert.equal(await page.evaluate(() => document.querySelector('#redator-batata-console').shadowRoot.activeElement?.id), 'open-writing');
   assert.equal(await control(page, 'main-panel').isVisible(), true);
 });
 
@@ -557,14 +557,14 @@ test('mobile reinjection restores the hub from an open secondary pane and preser
   await control(page, 'context').fill(draft);
   assert.equal(await control(page, 'main-panel').isVisible(), false);
   await page.addScriptTag({ content: script });
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
   assert.equal(await control(page, 'main-panel').isVisible(), true);
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
   assert.equal(await control(page, 'context').inputValue(), draft);
   assert.equal(await control(page, 'level').inputValue(), '5');
 });
 
-test('upgrading an old panel calls its cleanup once and replaces it with one current hub', async t => {
+test('upgrading a legacy provider panel calls its cleanup once and replaces it with one Batata hub', async t => {
   const page = await mount(t);
   await control(page, 'close').click();
   await page.evaluate(() => {
@@ -585,12 +585,13 @@ test('upgrading an old panel calls its cleanup once and replaces it with one cur
   await page.addScriptTag({ content: script });
   assert.equal(await page.evaluate(() => window.oldPanelCloseCalls), 1);
   assert.equal(await page.evaluate(() => window.oldPanelForTest.isConnected), false);
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
   assert.equal(await control(page, 'main-panel').isVisible(), true);
-  assert.notEqual(await page.locator('#redator-groq-console').getAttribute('data-redator-version'), '1.0.0');
+  assert.equal(await page.locator('#redator-batata-console').getAttribute('data-redator-version'), '1.10.0');
+  assert.equal(await page.locator('#redator-groq-console').count(), 0);
   await page.addScriptTag({ content: script });
   assert.equal(await page.evaluate(() => window.oldPanelCloseCalls), 1);
-  assert.equal(await page.locator('#redator-groq-console').count(), 1);
+  assert.equal(await page.locator('#redator-batata-console').count(), 1);
 });
 
 test('mobile validation errors remain visible in the secondary card and a successful save clears them', async t => {

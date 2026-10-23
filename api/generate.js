@@ -2,7 +2,7 @@
 
 const { isIP } = require('node:net');
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const PROVIDER_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
 const MODELS = new Set([DEFAULT_MODEL, 'openai/gpt-oss-120b']);
 const WORD_COUNTS = new Set([250, 350, 500, 700]);
@@ -148,14 +148,14 @@ function validate(body) {
   let words = body.words === undefined ? 350 : body.words;
   if (typeof words === 'string' && /^(250|350|500|700)$/.test(words)) words = Number(words);
   if (!WORD_COUNTS.has(words)) throw inputError('Escolha 250, 350, 500 ou 700 palavras.');
-  const configuredModel = (process.env.GROQ_MODEL || DEFAULT_MODEL).trim();
+  const configuredModel = (process.env.BATATA_MODEL || process.env.GROQ_MODEL || DEFAULT_MODEL).trim();
   if (body.model === undefined && !MODELS.has(configuredModel)) {
     const error = new Error('O modelo configurado no servidor não é permitido.');
     error.configError = true;
     throw error;
   }
   const model = body.model === undefined ? configuredModel : typeof body.model === 'string' ? body.model.trim() : '';
-  if (!MODELS.has(model)) throw inputError('Escolha um modelo Groq permitido: openai/gpt-oss-20b ou openai/gpt-oss-120b.');
+  if (!MODELS.has(model)) throw inputError('Escolha um modelo permitido: openai/gpt-oss-20b ou openai/gpt-oss-120b.');
   return { context, theme, instructions, genre, level, words, model };
 }
 
@@ -182,7 +182,7 @@ function messages(input) {
   ];
 }
 
-function generatedText(raw, input, groqKey) {
+function generatedText(raw, input, apiKey) {
   const content = raw.trim();
   let result;
   try { result = JSON.parse(content); }
@@ -196,7 +196,7 @@ function generatedText(raw, input, groqKey) {
       || typeof result.title !== 'string' || !result.title.trim()
       || typeof result.essay !== 'string' || !result.essay.trim()) return null;
 
-  const redact = text => text.split(groqKey).join('[segredo omitido]');
+  const redact = text => text.split(apiKey).join('[segredo omitido]');
   return {
     // O segredo é removido antes do corte para não expor parte da chave.
     title: Array.from(redact(result.title).replace(/\s+/g, ' ').trim()).slice(0, MAX_TITLE_LENGTH).join(''),
@@ -217,9 +217,9 @@ module.exports = async function generate(req, res) {
     return;
   }
 
-  const groqKey = (process.env.GROQ_API_KEY || '').trim();
-  if (!groqKey || /\s/.test(groqKey)) {
-    fail(res, 503, 'server_not_configured', 'A chave GROQ_API_KEY ainda não foi configurada no servidor.');
+  const apiKey = (process.env.BATATA_API_KEY || process.env.GROQ_API_KEY || '').trim();
+  if (!apiKey || /\s/.test(apiKey)) {
+    fail(res, 503, 'server_not_configured', 'A geração ainda não foi configurada no servidor.');
     return;
   }
 
@@ -252,9 +252,9 @@ module.exports = async function generate(req, res) {
   res.on?.('close', disconnect);
   req.on?.('aborted', disconnect);
   try {
-    const response = await fetch(GROQ_URL, {
+    const response = await fetch(PROVIDER_URL, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       signal: controller.signal,
       body: JSON.stringify({
         model: input.model,
@@ -272,15 +272,15 @@ module.exports = async function generate(req, res) {
       if (response.status === 429) {
         const retry = response.headers.get('retry-after');
         if (retry && /^\d+(?:\.\d+)?$/.test(retry)) res.setHeader('Retry-After', String(Math.ceil(Number(retry))));
-        fail(res, 429, 'provider_rate_limit', 'O limite de uso da Groq foi atingido. Aguarde e tente novamente.');
+        fail(res, 429, 'provider_rate_limit', 'O limite de uso do serviço foi atingido. Aguarde e tente novamente.');
       } else if (response.status === 401 || response.status === 403) {
-        fail(res, 502, 'provider_auth_failed', 'A Groq recusou a chave configurada no servidor. Confira GROQ_API_KEY na Vercel.');
+        fail(res, 502, 'provider_auth_failed', 'A chave configurada no servidor foi recusada. O responsável pelo serviço precisa conferir a configuração.');
       } else if (response.status === 413) {
-        fail(res, 413, 'provider_context_limit', 'A referência excedeu o limite aceito pela Groq. Reduza o texto.');
+        fail(res, 413, 'provider_context_limit', 'A referência excedeu o limite aceito pelo serviço. Reduza o texto.');
       } else if (response.status === 400 || response.status === 404) {
-        fail(res, 502, 'provider_request_failed', 'A Groq recusou o modelo ou os limites da solicitação. Tente outra configuração.');
+        fail(res, 502, 'provider_request_failed', 'O serviço recusou o modelo ou os limites da solicitação. Tente outra configuração.');
       } else {
-        fail(res, 502, 'provider_unavailable', 'A Groq está indisponível no momento. Tente novamente em instantes.');
+        fail(res, 502, 'provider_unavailable', 'O serviço está indisponível no momento. Tente novamente em instantes.');
       }
       return;
     }
@@ -288,18 +288,18 @@ module.exports = async function generate(req, res) {
     try { payload = await response.json(); }
     catch (error) {
       if (controller.signal.aborted) throw error;
-      fail(res, 502, 'invalid_provider_response', 'A Groq devolveu uma resposta inválida. Tente novamente.');
+      fail(res, 502, 'invalid_provider_response', 'O serviço devolveu uma resposta inválida. Tente novamente.');
       return;
     }
     const choice = payload?.choices?.[0];
     if (typeof choice?.message?.content !== 'string' || !choice.message.content.trim()) {
-      fail(res, 502, 'invalid_provider_response', 'A Groq devolveu uma resposta vazia ou em formato inválido. Tente novamente.');
+      fail(res, 502, 'invalid_provider_response', 'O serviço devolveu uma resposta vazia ou em formato inválido. Tente novamente.');
       return;
     }
     if (controller.signal.aborted) throw new Error('aborted');
-    const text = generatedText(choice.message.content, input, groqKey);
+    const text = generatedText(choice.message.content, input, apiKey);
     if (!text) {
-      fail(res, 502, 'invalid_provider_response', 'A Groq devolveu um título ou uma redação em formato inválido. Tente novamente.');
+      fail(res, 502, 'invalid_provider_response', 'O serviço devolveu um título ou uma redação em formato inválido. Tente novamente.');
       return;
     }
     send(res, 200, {
@@ -308,8 +308,8 @@ module.exports = async function generate(req, res) {
       model: input.model
     });
   } catch {
-    if (timedOut) fail(res, 504, 'provider_timeout', 'A Groq demorou mais de 80 segundos. Tente novamente.');
-    else if (!res.destroyed) fail(res, 502, 'provider_connection_failed', 'Não foi possível conectar à Groq. Tente novamente em instantes.');
+    if (timedOut) fail(res, 504, 'provider_timeout', 'O serviço demorou mais de 80 segundos. Tente novamente.');
+    else if (!res.destroyed) fail(res, 502, 'provider_connection_failed', 'Não foi possível conectar ao serviço. Tente novamente em instantes.');
   } finally {
     clearTimeout(timeout);
     res.removeListener?.('close', disconnect);

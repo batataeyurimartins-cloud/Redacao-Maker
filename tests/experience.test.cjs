@@ -19,7 +19,7 @@ let browser;
 let script;
 
 before(async () => {
-  script = fs.readFileSync(path.join(__dirname, '..', 'redator-groq.js'), 'utf8');
+  script = fs.readFileSync(path.join(__dirname, '..', 'redator-batata.js'), 'utf8');
   browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
     headless: true,
@@ -48,7 +48,7 @@ function html(content = hostForm()) {
 }
 
 function control(page, id) {
-  return page.locator(`#redator-groq-console >> #${id}`);
+  return page.locator(`#redator-batata-console >> #${id}`);
 }
 
 function notifications(page) {
@@ -111,9 +111,9 @@ async function mount(t, options = {}) {
   await page.goto(`${ORIGIN}/`);
   if (options.clock) await page.clock.install();
   await page.addScriptTag({ content: script });
-  await page.locator('#redator-groq-console').waitFor();
+  await page.locator('#redator-batata-console').waitFor();
   await page.evaluate(() => {
-    const root = document.getElementById('redator-groq-console').shadowRoot;
+    const root = document.getElementById('redator-batata-console').shadowRoot;
     window.notificationHistoryForTest = [];
     const record = () => {
       for (const notice of root.querySelectorAll('#notifications .notification')) {
@@ -139,7 +139,7 @@ async function closePane(page) {
 
 async function ready(page) {
   await page.waitForFunction(() => {
-    const root = document.getElementById('redator-groq-console')?.shadowRoot;
+    const root = document.getElementById('redator-batata-console')?.shadowRoot;
     return root && !root.getElementById('generate').disabled;
   }, null, { timeout: 5000 });
 }
@@ -154,7 +154,7 @@ async function generate(page) {
 
 async function expectToast(page, pattern, kind) {
   await page.waitForFunction(({ source, flags, kind }) => {
-    const root = document.getElementById('redator-groq-console')?.shadowRoot;
+    const root = document.getElementById('redator-batata-console')?.shadowRoot;
     return [...(root?.querySelectorAll('#notifications .notification') || [])].some(node =>
       new RegExp(source, flags).test(node.textContent) && (!kind || node.dataset.kind === kind));
   }, { source: pattern.source, flags: pattern.flags, kind }, { timeout: 5000 });
@@ -172,16 +172,16 @@ async function assertNoSuccess(page) {
 
 async function dismissAll(page) {
   await notifications(page).locator('.notification-close').evaluateAll(buttons => buttons.forEach(button => button.click()));
-  await page.waitForFunction(() => !document.getElementById('redator-groq-console').shadowRoot.querySelector('#notifications .notification'));
+  await page.waitForFunction(() => !document.getElementById('redator-batata-console').shadowRoot.querySelector('#notifications .notification'));
 }
 
 test('shows the five requested levels, defaults to Médio, and sends a numeric level without browser model settings', async t => {
   const { page, requests } = await mount(t);
   assert.equal(await control(page, 'level').inputValue(), '3');
   assert.equal(await control(page, 'summary-genre').innerText(), LEVELS[2]);
-  assert.equal(await page.locator('#redator-groq-console').locator('#model, #genre, #open-connection, #pane-connection, input[type="password"]').count(), 0);
-  assert.doesNotMatch(await page.locator('#redator-groq-console').evaluate(host => host.shadowRoot.textContent), /gpt-oss|llama-|modelo da groq|usar este modelo|gsk_/i);
-  assert.equal(await page.locator('#redator-groq-console >> .setting-row').count(), 5);
+  assert.equal(await page.locator('#redator-batata-console').locator('#model, #genre, #open-connection, #pane-connection, input[type="password"]').count(), 0);
+  assert.doesNotMatch(await page.locator('#redator-batata-console').evaluate(host => host.shadowRoot.textContent), /gpt-oss|llama-|groq|usar este modelo|gsk_/i);
+  assert.equal(await page.locator('#redator-batata-console >> .setting-row').count(), 5);
   await openPane(page, 'genre');
   assert.deepEqual(await control(page, 'pane-genre').locator('[data-choice="level"] .choice-label').allTextContents(), LEVELS);
   assert.equal(await control(page, 'choice-level-3').getAttribute('aria-pressed'), 'true');
@@ -204,7 +204,7 @@ test('shows the five requested levels, defaults to Médio, and sends a numeric l
     assert.equal(payload.theme, '');
     assert.equal(payload.instructions, '');
     assert.match(payload.context, /Bibliotecas públicas/);
-    assert.doesNotMatch(JSON.stringify(payload), /openai\/|gsk_|GROQ_API_KEY|Bearer\s/i);
+    assert.doesNotMatch(JSON.stringify(payload), /openai\/|gsk_|(?:BATATA|GROQ)_API_KEY|Bearer\s/i);
   }
   assert.equal(requests.length, 6);
 });
@@ -384,10 +384,10 @@ test('bounds and deduplicates the notification stack, pauses expiry, supports di
   await control(page, 'generate').focus();
   assert.equal(await page.evaluate(() => window.activeTimeoutsForTest.size), 2, 'each remaining notice has one expiry timer');
   await control(page, 'close').click();
-  await page.locator('#redator-groq-console').waitFor({ state: 'detached' });
+  await page.locator('#redator-batata-console').waitFor({ state: 'detached' });
   assert.equal(await page.evaluate(() => window.activeTimeoutsForTest.size), 0, 'closing the hub clears all notification timers');
   await page.clock.fastForward(60000);
-  assert.equal(await page.locator('#redator-groq-console').count(), 0);
+  assert.equal(await page.locator('#redator-batata-console').count(), 0);
   await page.addScriptTag({ content: script });
   assert.ok(await notifications(page).count() <= 1, 'reopening must not restore notices from the disposed hub');
 });
@@ -395,7 +395,7 @@ test('bounds and deduplicates the notification stack, pauses expiry, supports di
 test('respects reduced motion for JavaScript and CSS and hides panes and collapsed content immediately', async t => {
   const { page } = await mount(t, { reducedMotion: 'reduce' });
   const state = await page.evaluate(() => {
-    const root = document.getElementById('redator-groq-console').shadowRoot;
+    const root = document.getElementById('redator-batata-console').shadowRoot;
     root.getElementById('open-source').click();
     const opened = !root.getElementById('secondary-panel').hidden;
     root.getElementById('secondary-close').click();
@@ -420,7 +420,7 @@ test('respects reduced motion for JavaScript and CSS and hides panes and collaps
 test('keeps the final pane and collapse state correct after rapid animated transitions', async t => {
   const { page } = await mount(t, { reducedMotion: 'no-preference' });
   await page.evaluate(() => {
-    const root = document.getElementById('redator-groq-console').shadowRoot;
+    const root = document.getElementById('redator-batata-console').shadowRoot;
     for (let index = 0; index < 8; index += 1) {
       root.getElementById('open-source').click();
       root.getElementById('secondary-close').click();
@@ -433,7 +433,7 @@ test('keeps the final pane and collapse state correct after rapid animated trans
     root.getElementById('open-words').click();
   });
   await page.waitForFunction(() => {
-    const root = document.getElementById('redator-groq-console').shadowRoot;
+    const root = document.getElementById('redator-batata-console').shadowRoot;
     const panel = root.getElementById('secondary-panel');
     return !panel.hidden && !root.getElementById('pane-words').hidden && getComputedStyle(panel).opacity === '1';
   });
@@ -451,16 +451,16 @@ test('keeps the final pane and collapse state correct after rapid animated trans
 test('reinjects a working hub while the previous hub is still animating closed', async t => {
   const { page } = await mount(t, { reducedMotion: 'no-preference' });
   const replaced = await page.evaluate(source => {
-    const previous = document.getElementById('redator-groq-console');
+    const previous = document.getElementById('redator-batata-console');
     previous.shadowRoot.getElementById('close').click();
     eval(source);
     window.closedHubForTest = previous;
-    window.replacementHubForTest = document.getElementById('redator-groq-console');
+    window.replacementHubForTest = document.getElementById('redator-batata-console');
     return !!window.replacementHubForTest && window.replacementHubForTest !== previous;
   }, script);
   assert.equal(replaced, true, 'reinjection during close must create a fresh, usable hub');
   await page.waitForFunction(() => !window.closedHubForTest.isConnected);
-  assert.equal(await page.evaluate(() => document.getElementById('redator-groq-console') === window.replacementHubForTest), true,
+  assert.equal(await page.evaluate(() => document.getElementById('redator-batata-console') === window.replacementHubForTest), true,
     'the previous exit animation must not remove the replacement hub');
   await openPane(page, 'genre');
   await control(page, 'choice-level-5').click();
@@ -477,7 +477,7 @@ test('keeps the result pane closed when generation completes during animated col
         status: 200, headers: { 'Content-Type': 'application/json' },
       }));
     });
-    const root = document.getElementById('redator-groq-console').shadowRoot;
+    const root = document.getElementById('redator-batata-console').shadowRoot;
     root.getElementById('generate').click();
     root.getElementById('minimize').click();
     window.completeGenerationForTest();

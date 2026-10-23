@@ -58,7 +58,7 @@ function headerNames(value = '') {
 }
 
 function control(page, id) {
-  return page.locator(`#redator-groq-console >> #${id}`);
+  return page.locator(`#redator-batata-console >> #${id}`);
 }
 
 async function fixture(t, extraHeaders = {}) {
@@ -67,7 +67,7 @@ async function fixture(t, extraHeaders = {}) {
   const serverErrors = [];
   const browserRequests = [];
   const previousFetch = global.fetch;
-  const previousEnv = Object.fromEntries(['GROQ_API_KEY', 'GROQ_MODEL', 'VERCEL'].map(key => [key, process.env[key]]));
+  const previousEnv = Object.fromEntries(['BATATA_API_KEY', 'BATATA_MODEL', 'GROQ_API_KEY', 'GROQ_MODEL', 'VERCEL'].map(key => [key, process.env[key]]));
   let context;
   const apiServer = http.createServer(async (req, res) => {
     if (req.url !== '/api/generate') { res.writeHead(404).end(); return; }
@@ -108,6 +108,8 @@ async function fixture(t, extraHeaders = {}) {
     }
     assert.deepEqual(serverErrors, []);
   });
+  delete process.env.BATATA_API_KEY;
+  delete process.env.BATATA_MODEL;
   process.env.GROQ_API_KEY = FIXTURE_KEY;
   delete process.env.GROQ_MODEL;
   delete process.env.VERCEL;
@@ -146,11 +148,11 @@ async function fixture(t, extraHeaders = {}) {
       return nativeFetch(input, init);
     };
   }, { apiOrigin, headers: { ...TELEMETRY_HEADERS, ...extraHeaders } });
-  const source = fs.readFileSync(path.join(__dirname, '..', 'redator-groq.js'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'redator-batata.js'), 'utf8');
   const serviceDeclaration = `const SERVICE_ORIGIN = '${PUBLIC_ORIGIN}';`;
   assert.ok(source.includes(serviceDeclaration), 'the fixture must replace the actual service origin');
   await page.evaluate(source.replace(serviceDeclaration, `const SERVICE_ORIGIN = '${apiOrigin}';`));
-  await page.locator('#redator-groq-console').waitFor();
+  await page.locator('#redator-batata-console').waitFor();
   t.after(() => {
     assert.ok(browserRequests.every(request => [pageOrigin, apiOrigin].includes(new URL(request.url).origin)),
       'the regression must not make internet requests');
@@ -182,7 +184,7 @@ test('real cross-origin telemetry preflight permits one POST and displays the re
   const { page, context, pageOrigin, apiRequests, providerCalls } = await fixture(t);
   await configure(page);
   await control(page, 'generate').click();
-  await page.waitForFunction(() => document.getElementById('redator-groq-console').shadowRoot.getElementById('result').value.length > 0);
+  await page.waitForFunction(() => document.getElementById('redator-batata-console').shadowRoot.getElementById('result').value.length > 0);
 
   assert.equal(await control(page, 'result').inputValue(), RESULT);
   assert.equal(await control(page, 'retry-connection').isVisible(), false);
@@ -196,20 +198,20 @@ test('real cross-origin telemetry preflight permits one POST and displays the re
   assert.deepEqual(headerNames(preflight.headers['access-control-request-headers']), EXPECTED_HEADERS);
   assert.equal(preflight.status, 204);
   assert.equal(preflight.providerCallsBefore, 0);
-  assert.equal(preflight.providerCallsAfter, 0, 'OPTIONS must never invoke Groq');
+  assert.equal(preflight.providerCallsAfter, 0, 'OPTIONS must never invoke the provider');
   assert.deepEqual(headerNames(preflight.responseHeaders['access-control-allow-headers']), EXPECTED_HEADERS);
   assert.equal(preflight.responseHeaders['access-control-allow-credentials'], undefined);
   assert.deepEqual(post.body, INPUT);
   assert.equal(post.status, 200);
   for (const [name, value] of Object.entries(TELEMETRY_HEADERS)) assert.equal(post.headers[name.toLowerCase()], value);
   for (const request of apiRequests) assert.equal(request.headers.authorization, undefined);
-  assert.equal(providerCalls.length, 1, 'only the permitted POST may invoke Groq');
+  assert.equal(providerCalls.length, 1, 'only the permitted POST may invoke the provider');
   assert.equal(providerCalls[0].url, PROVIDER_URL);
   const providerHeaders = new Headers(providerCalls[0].options.headers);
   assert.equal(providerHeaders.get('authorization'), `Bearer ${FIXTURE_KEY}`);
   assert.equal(providerHeaders.get('content-type'), 'application/json');
   assert.deepEqual([...providerHeaders.keys()].sort(), ['authorization', 'content-type'],
-    'host-page telemetry must not be forwarded to Groq');
+    'host-page telemetry must not be forwarded to the provider');
   assert.equal(providerCalls[0].body.model, DEFAULT_MODEL);
   assert.deepEqual(JSON.parse(providerCalls[0].body.messages[1].content), {
     tema: INPUT.theme, instrucoes_adicionais: INPUT.instructions, texto_de_referencia: INPUT.context

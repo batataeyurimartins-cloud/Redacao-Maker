@@ -5,8 +5,10 @@ const path = require('node:path');
 
 const projectRoot = path.resolve(__dirname, '..');
 const publicDirectory = path.join(projectRoot, 'public');
-const sourcePath = path.join(projectRoot, 'redator-groq.js');
-const publicScriptNames = ['redator-groq.js', 'hub.js'];
+const sourcePath = path.join(projectRoot, 'redator-batata.js');
+const publicScriptNames = ['redator-batata.js', 'hub.js'];
+// Preserve direct downloads saved before the Batata rename.
+const legacyScriptNames = ['redator-groq.js'];
 const fallbackOrigin = 'https://redacao-maker.vercel.app';
 const serviceOriginDeclaration = /const SERVICE_ORIGIN\s*=\s*(['"])([^'"\r\n]*)\1\s*;/;
 
@@ -30,7 +32,7 @@ if (configuredOrigin) {
   const originText = configuredOrigin.trim();
   const origin = verifiedOrigin(originText.includes('://') ? originText : `https://${originText}`);
   if (!serviceOriginDeclaration.test(source)) {
-    throw new Error('redator-groq.js must declare const SERVICE_ORIGIN before a deployment origin can be configured.');
+    throw new Error('redator-batata.js must declare const SERVICE_ORIGIN before a deployment origin can be configured.');
   }
   source = source.replace(serviceOriginDeclaration, `const SERVICE_ORIGIN = ${JSON.stringify(origin)};`);
 }
@@ -41,17 +43,18 @@ const bookmarkletBody = `(()=>{const s=document.createElement('script');s.src=${
 const bookmarklet = `javascript:${encodeURIComponent(bookmarkletBody)}`;
 const bookmarkImportHtml = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
-<TITLE>Redator Groq</TITLE>
-<H1>Redator Groq</H1>
+<TITLE>Batata</TITLE>
+<H1>Batata</H1>
 <DL><p>
-    <DT><A HREF="${escapeHtmlAttribute(bookmarklet)}">Redator Groq</A>
+    <DT><A HREF="${escapeHtmlAttribute(bookmarklet)}">Batata</A>
 </DL><p>
 `;
 
 fs.mkdirSync(publicDirectory, { recursive:true });
-for (const fileName of publicScriptNames) {
+for (const fileName of [...publicScriptNames, ...legacyScriptNames]) {
   fs.writeFileSync(path.join(publicDirectory, fileName), source, 'utf8');
 }
 fs.writeFileSync(path.join(publicDirectory, 'bookmarklet.txt'), `${bookmarklet}\n`, 'utf8');
+fs.writeFileSync(path.join(publicDirectory, 'favorito-batata.html'), bookmarkImportHtml, 'utf8');
 fs.writeFileSync(path.join(publicDirectory, 'favorito-redator-groq.html'), bookmarkImportHtml, 'utf8');
 console.log('Public console scripts and bookmarklet installation files prepared.');

@@ -31,10 +31,12 @@ let originalDateNow;
 let previousEnv;
 
 beforeEach(() => {
-  previousEnv = Object.fromEntries(['GROQ_API_KEY', 'GROQ_MODEL', 'VERCEL'].map(key => [key, process.env[key]]));
+  previousEnv = Object.fromEntries(['BATATA_API_KEY', 'BATATA_MODEL', 'GROQ_API_KEY', 'GROQ_MODEL', 'VERCEL'].map(key => [key, process.env[key]]));
   originalFetch = global.fetch;
   originalTimeout = global.setTimeout;
   originalDateNow = Date.now;
+  delete process.env.BATATA_API_KEY;
+  delete process.env.BATATA_MODEL;
   process.env.GROQ_API_KEY = API_KEY;
   delete process.env.GROQ_MODEL;
   delete process.env.VERCEL;
@@ -108,11 +110,14 @@ function assertSanitized(res, forbidden = []) {
   for (const secret of [API_KEY, ...forbidden]) {
     assert.ok(!output.includes(secret), `response leaked ${secret.slice(0, 8)}…`);
   }
+  assert.doesNotMatch(output, /groq|(?:BATATA|GROQ)_(?:API_KEY|MODEL)/i);
   assert.equal(typeof res.body?.error?.message, 'string');
   assert.ok(res.body.error.message.length > 0);
 }
 
-test('anonymous backend builds its own Groq prompt from normalized essay settings', async () => {
+test('anonymous backend builds its own provider prompt using preferred Batata configuration', async () => {
+  process.env.BATATA_API_KEY = API_KEY;
+  process.env.GROQ_API_KEY = 'invalid legacy fallback';
   let sent;
   global.fetch = async (url, options) => {
     sent = { url, options, body: JSON.parse(options.body) };
@@ -209,7 +214,7 @@ for (const [configuration, configuredModel, expectedModel] of [
   ['server-configured', 'openai/gpt-oss-120b', 'openai/gpt-oss-120b'],
 ]) {
   test(`new anonymous level payload infers genre and uses the ${configuration} model without a client model selection`, async () => {
-    if (configuredModel !== undefined) process.env.GROQ_MODEL = configuredModel;
+    if (configuredModel !== undefined) process.env.BATATA_MODEL = configuredModel;
     let sent;
     global.fetch = async (_url, options) => { sent = JSON.parse(options.body); return responseFor(completion()); };
     assert.equal(Object.hasOwn(levelInput, 'genre'), false);
@@ -235,8 +240,8 @@ test('explicit legacy genre and model remain supported alongside a writing level
   assert.doesNotMatch(sent.messages[0].content, /Identifique na proposta/);
 });
 
-test('new level payload rejects invalid server model configuration before contacting Groq', async () => {
-  process.env.GROQ_MODEL = 'arbitrary-expensive-model';
+test('new level payload rejects invalid server model configuration before contacting the provider', async () => {
+  process.env.BATATA_MODEL = 'arbitrary-expensive-model';
   let calls = 0;
   global.fetch = async () => { calls += 1; return responseFor(completion()); };
   const { res } = await invoke({ body: { ...levelInput } });
@@ -371,7 +376,7 @@ test('anonymous requests do not require a token and an extraneous authorization 
   assert.equal(calls, 2);
 });
 
-test('reports missing Groq configuration without requiring authentication', async () => {
+test('reports missing Batata configuration without requiring authentication', async () => {
   delete process.env.GROQ_API_KEY;
   const { res } = await invoke();
   assert.equal(res.statusCode, 503);
@@ -417,7 +422,7 @@ for (const [label, level] of [
 ]) invalidBodies.push([label, { ...levelInput, level }]);
 
 for (const [label, body] of invalidBodies) {
-  test(`rejects ${label} before contacting Groq`, async () => {
+  test(`rejects ${label} before contacting the provider`, async () => {
     let calls = 0;
     global.fetch = async () => { calls += 1; return responseFor(completion()); };
     const { res } = await invoke({ body });
@@ -449,7 +454,7 @@ test('uses the configured allowlisted model when the request does not select one
 });
 
 for (const [upstream, expected] of [[401, 502], [403, 502], [429, 429], [500, 502]]) {
-  test(`sanitizes Groq HTTP ${upstream} without exposing provider body or secrets`, async () => {
+  test(`sanitizes provider HTTP ${upstream} without exposing provider body or secrets`, async () => {
     const detail = `PRIVATE_PROVIDER_DETAIL ${API_KEY} ${validInput.context}`;
     global.fetch = async () => responseFor({ error: { message: detail } }, upstream, { 'retry-after': '12' });
     const { res } = await invoke();
@@ -471,7 +476,7 @@ for (const [label, upstream] of [
   ['empty output', completion('   ')],
   ['non-string output', completion({ text: 'invalid type' })],
 ]) {
-  test(`rejects ${label} from Groq as a bad upstream response`, async () => {
+  test(`rejects ${label} from the provider as a bad upstream response`, async () => {
     global.fetch = async () => responseFor(upstream);
     const { res } = await invoke();
     assert.equal(res.statusCode, 502);
@@ -517,7 +522,7 @@ test('aborts a stalled provider request on its deadline and returns a sanitized 
 test('health reports readiness using booleans without exposing environment values', async () => {
   let result = await invoke({ method: 'GET', authorization: null }, health);
   assert.equal(result.res.statusCode, 200);
-  assert.deepEqual(result.res.body, { service: 'redator-groq', configured: true, provider: 'groq', publicAccess: true });
+  assert.deepEqual(result.res.body, { service: 'batata', configured: true, publicAccess: true });
   assert.ok(!JSON.stringify(result.res.body).includes(API_KEY));
   delete process.env.GROQ_API_KEY;
   result = await invoke({ method: 'GET', authorization: null }, health);
@@ -563,7 +568,7 @@ test('invalid input does not consume the anonymous generation allowance', async 
   assert.equal(calls, 5);
 });
 
-test('an unconfigured server does not consume quota before its Groq key is provided', async () => {
+test('an unconfigured server does not consume quota before its provider key is provided', async () => {
   let calls = 0;
   global.fetch = async () => { calls += 1; return responseFor(completion()); };
   delete process.env.GROQ_API_KEY;

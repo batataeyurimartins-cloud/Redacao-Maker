@@ -20,7 +20,7 @@ let script;
 let fieldModule;
 
 before(async () => {
-  script = fs.readFileSync(path.join(__dirname, '..', 'redator-groq.js'), 'utf8');
+  script = fs.readFileSync(path.join(__dirname, '..', 'redator-batata.js'), 'utf8');
   fieldModule = script.match(/\/\/ BEGIN_PAGE_FILL([\s\S]*?)\/\/ END_PAGE_FILL/)[1];
   browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
@@ -81,7 +81,7 @@ function documentWith(content, controlled = false, formAttributes = '') {
     </script></body></html>`;
 }
 
-function control(page, id) { return page.locator(`#redator-groq-console >> #${id}`); }
+function control(page, id) { return page.locator(`#redator-batata-console >> #${id}`); }
 
 async function fixture(t, options = {}) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 1000 }, reducedMotion: 'reduce' });
@@ -127,8 +127,8 @@ async function fixture(t, options = {}) {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(ACTIVITY_URL);
   await page.addScriptTag({ content: script });
-  await page.locator('#redator-groq-console').waitFor();
-  await page.addScriptTag({ content: `${fieldModule}\nwindow.fieldInspectorForTest=createPageFill({excludeRoot:document.getElementById('redator-groq-console')});` });
+  await page.locator('#redator-batata-console').waitFor();
+  await page.addScriptTag({ content: `${fieldModule}\nwindow.fieldInspectorForTest=createPageFill({excludeRoot:document.getElementById('redator-batata-console')});` });
   await control(page, 'open-source').click();
   await control(page, 'context').fill('Bibliotecas públicas oferecem acesso gratuito à internet e formação digital.');
   await control(page, 'save-source').click();
@@ -137,7 +137,7 @@ async function fixture(t, options = {}) {
 }
 
 async function ready(page) {
-  await page.waitForFunction(() => !document.getElementById('redator-groq-console').shadowRoot.getElementById('generate').disabled,
+  await page.waitForFunction(() => !document.getElementById('redator-batata-console').shadowRoot.getElementById('generate').disabled,
     null, { timeout: 5000 });
 }
 
