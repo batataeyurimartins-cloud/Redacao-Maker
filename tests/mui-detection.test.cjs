@@ -103,6 +103,7 @@ async function fixture(t, { content = muiPair(), behavior = '', origin = ORIGIN,
   await control(page, 'open-source').click();
   await control(page, 'context').fill('Bibliotecas públicas oferecem acesso gratuito à internet e formação digital.');
   await control(page, 'save-source').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   return page;
 }
 

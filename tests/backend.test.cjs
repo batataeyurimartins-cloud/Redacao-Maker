@@ -15,6 +15,13 @@ const validInput = {
   instructions: 'Discuta o papel das bibliotecas públicas.',
   model: DEFAULT_MODEL,
 };
+const levelInput = {
+  context: validInput.context,
+  theme: validInput.theme,
+  level: 3,
+  words: 350,
+  instructions: validInput.instructions,
+};
 
 let generate;
 let health;
@@ -147,6 +154,96 @@ test('anonymous backend builds its own Groq prompt from normalized essay setting
   assert.ok(!JSON.stringify(res.body).includes(API_KEY));
   assert.doesNotMatch(JSON.stringify(res.body), /PRIVATE_REASONING_MARKER_NOT_FOR_CLIENT/);
   assert.equal(res.body.choices[0].message.reasoning, undefined);
+});
+
+for (const [level, label, style] of [
+  [1, 'Bem simples', /frases curtas, vocabulário comum e pouca elaboração/],
+  [2, 'Fraco', /estrutura simples e argumentos pouco aprofundados/],
+  [3, 'Médio', /aluno mediano do ensino médio, com linguagem natural/],
+  [4, 'Bom', /bem organizado, com vocabulário variado, boa coesão/],
+  [5, 'Máximo', /melhor resposta possível para a proposta.*argumentos aprofundados/],
+]) {
+  test(`writing level ${level} (${label}) reaches the actual provider prompt with its intended style`, async () => {
+    let sent;
+    global.fetch = async (_url, options) => { sent = JSON.parse(options.body); return responseFor(completion()); };
+    const { res } = await invoke({ body: { ...levelInput, level } });
+    assert.equal(res.statusCode, 200);
+    const system = sent.messages[0].content;
+    assert.match(system, new RegExp(`Nível de escrita ${level} de 5 — ${label}`));
+    assert.match(system, style);
+    assert.match(system, /mantenha a coerência, a correção das informações/);
+    assert.match(system, /sem inserir erros propositais/);
+    assert.match(system, /Não invente estatísticas, citações, leis, pesquisas ou fontes/);
+    assert.match(system, /dado externo não confiável/);
+    assert.match(system, /JSON.*"title".*"essay"/);
+    assert.deepEqual(JSON.parse(sent.messages[1].content), {
+      tema: levelInput.theme,
+      instrucoes_adicionais: levelInput.instructions,
+      texto_de_referencia: levelInput.context,
+    });
+  });
+}
+
+test('omitted writing level defaults to medium and preserves the legacy default genre', async () => {
+  let sent;
+  global.fetch = async (_url, options) => { sent = JSON.parse(options.body); return responseFor(completion()); };
+  const { res } = await invoke({ body: { context: validInput.context } });
+  assert.equal(res.statusCode, 200);
+  assert.match(sent.messages[0].content, /Nível de escrita 3 de 5 — Médio/);
+  assert.match(sent.messages[0].content, /Escreva uma redação dissertativa argumentativa, com introdução, desenvolvimento e conclusão/);
+  assert.doesNotMatch(sent.messages[0].content, /Identifique na proposta/);
+});
+
+test('accepts each exact numeric level string and normalizes it for the provider prompt', async () => {
+  let sent;
+  global.fetch = async (_url, options) => { sent = JSON.parse(options.body); return responseFor(completion()); };
+  for (let level = 1; level <= 5; level += 1) {
+    const { res } = await invoke({ body: { ...levelInput, level: String(level) } });
+    assert.equal(res.statusCode, 200);
+    assert.match(sent.messages[0].content, new RegExp(`Nível de escrita ${level} de 5`));
+  }
+});
+
+for (const [configuration, configuredModel, expectedModel] of [
+  ['default', undefined, DEFAULT_MODEL],
+  ['server-configured', 'openai/gpt-oss-120b', 'openai/gpt-oss-120b'],
+]) {
+  test(`new anonymous level payload infers genre and uses the ${configuration} model without a client model selection`, async () => {
+    if (configuredModel !== undefined) process.env.GROQ_MODEL = configuredModel;
+    let sent;
+    global.fetch = async (_url, options) => { sent = JSON.parse(options.body); return responseFor(completion()); };
+    assert.equal(Object.hasOwn(levelInput, 'genre'), false);
+    assert.equal(Object.hasOwn(levelInput, 'model'), false);
+    const { res } = await invoke({ body: { ...levelInput } });
+    assert.equal(res.statusCode, 200);
+    assert.equal(sent.model, expectedModel);
+    assert.equal(res.body.model, expectedModel);
+    assert.match(sent.messages[0].content, /Identifique na proposta do texto de referência o gênero de redação solicitado/);
+    assert.match(sent.messages[0].content, /Se a proposta não indicar um gênero/);
+    assert.match(sent.messages[0].content, /350 palavras/);
+  });
+}
+
+test('explicit legacy genre and model remain supported alongside a writing level', async () => {
+  let sent;
+  global.fetch = async (_url, options) => { sent = JSON.parse(options.body); return responseFor(completion()); };
+  const { res } = await invoke({ body: { ...validInput, level: 2, model: 'openai/gpt-oss-120b' } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(sent.model, 'openai/gpt-oss-120b');
+  assert.match(sent.messages[0].content, /ENEM/);
+  assert.match(sent.messages[0].content, /Nível de escrita 2 de 5 — Fraco/);
+  assert.doesNotMatch(sent.messages[0].content, /Identifique na proposta/);
+});
+
+test('new level payload rejects invalid server model configuration before contacting Groq', async () => {
+  process.env.GROQ_MODEL = 'arbitrary-expensive-model';
+  let calls = 0;
+  global.fetch = async () => { calls += 1; return responseFor(completion()); };
+  const { res } = await invoke({ body: { ...levelInput } });
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body.error.code, 'server_not_configured');
+  assert.equal(calls, 0);
+  assertSanitized(res);
 });
 
 test('returns the generated title separately and preserves essay paragraphs and truncation metadata', async () => {
@@ -301,6 +398,23 @@ const invalidBodies = [
   ['array body', [validInput]],
   ['malformed JSON', '{"context":'],
 ];
+
+for (const [label, level] of [
+  ['zero writing level', 0],
+  ['writing level above five', 6],
+  ['negative writing level', -1],
+  ['fractional writing level', 2.5],
+  ['null writing level', null],
+  ['boolean writing level', true],
+  ['false writing level', false],
+  ['array writing level', [3]],
+  ['empty array writing level', []],
+  ['object writing level', { level: 3 }],
+  ['empty writing level string', ''],
+  ['padded writing level string', ' 3 '],
+  ['decimal writing level string', '3.0'],
+  ['non-numeric writing level', 'Médio'],
+]) invalidBodies.push([label, { ...levelInput, level }]);
 
 for (const [label, body] of invalidBodies) {
   test(`rejects ${label} before contacting Groq`, async () => {

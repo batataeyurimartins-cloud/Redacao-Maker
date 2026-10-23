@@ -10,6 +10,7 @@ const { chromium } = require('playwright');
 const PUBLIC_ORIGIN = 'https://redacao-maker.vercel.app';
 const PROVIDER_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const FIXTURE_KEY = 'gsk_CORS_BROWSER_FIXTURE_ONLY';
+const DEFAULT_MODEL = 'openai/gpt-oss-20b';
 const RESULT = 'Bibliotecas públicas ampliam o acesso à educação e à cidadania digital.';
 const TELEMETRY_HEADERS = {
   'Request-Id': '|0123456789abcdef.0123456789abcdef.',
@@ -20,8 +21,8 @@ const TELEMETRY_HEADERS = {
 };
 const INPUT = {
   context: 'Bibliotecas públicas oferecem acesso gratuito à internet e formação digital.',
-  theme: 'Inclusão digital e cidadania', genre: 'enem', words: 500,
-  instructions: 'Explique o papel das bibliotecas públicas.', model: 'openai/gpt-oss-120b'
+  theme: 'Inclusão digital e cidadania', level: 5, words: 500,
+  instructions: 'Explique o papel das bibliotecas públicas.'
 };
 const EXPECTED_HEADERS = ['content-type', ...Object.keys(TELEMETRY_HEADERS).map(name => name.toLowerCase())].sort();
 
@@ -116,13 +117,13 @@ async function fixture(t, extraHeaders = {}) {
   global.fetch = async (url, options) => {
     providerCalls.push({ url: String(url), options, body: JSON.parse(options.body) });
     return new Response(JSON.stringify({
-      model: INPUT.model,
+      model: DEFAULT_MODEL,
       choices: [{ message: { role: 'assistant', content: RESULT }, finish_reason: 'stop' }]
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   };
   const apiOrigin = await listen(apiServer);
   const pageOrigin = await listen(pageServer);
-  context = await browser.newContext({ serviceWorkers: 'block' });
+  context = await browser.newContext({ serviceWorkers: 'block', reducedMotion: 'reduce' });
   context.setDefaultTimeout(5000);
   context.on('request', request => browserRequests.push({ url: request.url(), headers: request.headers() }));
   const page = await context.newPage();
@@ -163,17 +164,18 @@ async function configure(page) {
   await control(page, 'open-source').click();
   await control(page, 'context').fill(INPUT.context);
   await control(page, 'save-source').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   await control(page, 'open-writing').click();
   await control(page, 'theme').fill(INPUT.theme);
   await control(page, 'instructions').fill(INPUT.instructions);
   await control(page, 'save-writing').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   await control(page, 'open-genre').click();
-  await control(page, `choice-genre-${INPUT.genre}`).click();
+  await control(page, `choice-level-${INPUT.level}`).click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   await control(page, 'open-words').click();
   await control(page, `choice-words-${INPUT.words}`).click();
-  await control(page, 'open-connection').click();
-  await control(page, 'model').fill(INPUT.model);
-  await control(page, 'save-connection').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
 }
 
 test('real cross-origin telemetry preflight permits one POST and displays the result without a popup', { timeout: 20000 }, async t => {
@@ -208,11 +210,12 @@ test('real cross-origin telemetry preflight permits one POST and displays the re
   assert.equal(providerHeaders.get('content-type'), 'application/json');
   assert.deepEqual([...providerHeaders.keys()].sort(), ['authorization', 'content-type'],
     'host-page telemetry must not be forwarded to Groq');
-  assert.equal(providerCalls[0].body.model, INPUT.model);
+  assert.equal(providerCalls[0].body.model, DEFAULT_MODEL);
   assert.deepEqual(JSON.parse(providerCalls[0].body.messages[1].content), {
     tema: INPUT.theme, instrucoes_adicionais: INPUT.instructions, texto_de_referencia: INPUT.context
   });
-  assert.match(providerCalls[0].body.messages[0].content, /ENEM/);
+  assert.match(providerCalls[0].body.messages[0].content, /Nível de escrita 5 de 5.*Máximo/);
+  assert.match(providerCalls[0].body.messages[0].content, /melhor resposta possível/);
   assert.match(providerCalls[0].body.messages[0].content, /500 palavras/);
 });
 

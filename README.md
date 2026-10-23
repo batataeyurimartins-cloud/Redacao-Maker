@@ -13,8 +13,10 @@ A Groq está integrada por um backend na Vercel: o navegador envia a referência
 1. Acesse https://redacao-maker.vercel.app e mostre a barra de favoritos do navegador (`Ctrl+Shift+B` no Chrome/Edge ou `⌘⇧B` no Mac).
 2. Arraste o botão **★ Redator Groq** para a barra de favoritos. Abra a página cujo texto deseja usar e clique nesse favorito.
 3. Em **Referência**, revise o texto capturado e clique em **Usar este texto**. Você pode editar manualmente, reler a página ou usar uma seleção.
-4. Em **Tipo** e **Extensão**, escolha as opções; o painel auxiliar fecha e atualiza o resumo no hub. Em **Tema**, defina instruções se quiser.
+4. Em **Tipo**, escolha o nível de escrita: **1 — Bem simples**, **2 — Fraco**, **3 — Médio** (padrão), **4 — Bom** ou **5 — Máximo**. Em **Extensão**, escolha o tamanho. O painel auxiliar fecha e atualiza o resumo no hub. Em **Tema**, defina instruções se quiser.
 5. Clique em **Gerar redação**. O hub gera o título e o texto separadamente e preenche os campos correspondentes da página quando consegue identificá-los. O resultado também abre no painel auxiliar para revisão, cópia e download.
+
+O hub mostra notificações para as ações concluídas, como **Redação realizada**, **Redação preenchida** e **Redação copiada**. Se apenas um campo for preenchido, avisa **Redação parcialmente preenchida**; se não identificar os campos, oferece a escolha manual. Os avisos desaparecem automaticamente, pausam quando recebem foco ou o mouse e podem ser fechados pelo **×**. Abertura, fechamento, recolhimento, seleções e geração têm animações, respeitando a preferência de movimento reduzido do sistema. A escolha do modelo fica no servidor.
 
 Na Sala do Futuro, a detecção reconhece os rótulos **Titulo** e **Redação**, inclusive quando aparecem como texto ao redor do campo. Na tela de atividade, também reconhece o par de caixas de texto do mesmo editor, sem depender dos IDs aleatórios, das classes `css-*` ou da altura dos campos. Em outras páginas, procura campos de título e redação por seus rótulos e atributos. Se houver vários candidatos, use **Escolher título** e **Escolher redação**, clique em cada campo da página e depois em **Preencher página**. Campos ocultos, desativados, de pesquisa, de referência e do próprio hub ficam fora da detecção automática. O hub não clica em botões de salvar ou enviar. Uma geração cancelada, com erro ou incompleta mantém os campos da página como estavam.
 
@@ -48,12 +50,12 @@ A proteção de login da Vercel não deve interceptar os endpoints usados pelo c
 ## API
 
 - `GET /api/health`: informa `publicAccess: true` e `configured: true/false`, sem revelar valores. Isso verifica a presença da chave; não confirma sua validade na Groq.
-- `POST /api/generate`: recebe `{context, theme, genre, words, instructions, model}` sem credenciais no navegador. Retorna `title` separado, `choices[0].message.content` com o corpo da redação e `finish_reason`.
+- `POST /api/generate`: recebe `{context, theme, level, words, instructions}` sem credenciais no navegador. `level` é um inteiro de 1 a 5, com padrão 3. Retorna `title` separado, `choices[0].message.content` com o corpo da redação e `finish_reason`.
 - `OPTIONS /api/generate`: permite o preflight CORS, sem executar uma geração.
 
 O CORS também permite os cabeçalhos de rastreamento `Request-Id`, `Request-Context`, `Traceparent`, `Tracestate` e `Baggage`. Algumas páginas, como a Sala do Futuro, acrescentam esses cabeçalhos automaticamente ao `fetch`. Eles não são usados como autenticação nem repassados à Groq.
 
-O servidor limita a referência a 18.000 caracteres, aceita os dois modelos indicados, monta o prompt e usa até 2.800 tokens de saída. O tipo pode ser `dissertativa`, `enem` ou `expositiva`; a extensão aproximada pode ser 250, 350, 500 ou 700 palavras. O servidor espera até 80 segundos pela Groq; o cliente espera até 90 segundos pelo servidor.
+O servidor limita a referência a 18.000 caracteres, monta o prompt com o nível escolhido e usa até 2.800 tokens de saída. A proposta orienta o gênero do texto; a extensão aproximada pode ser 250, 350, 500 ou 700 palavras. O servidor espera até 80 segundos pela Groq; o cliente espera até 90 segundos pelo servidor. Para compatibilidade com scripts anteriores, a API ainda aceita os campos opcionais `genre` (`dissertativa`, `enem` ou `expositiva`) e `model` (um dos dois modelos indicados).
 
 Os modelos GPT-OSS são servidos pela própria Groq e usam a chave Groq configurada. A chamada usa raciocínio baixo e retorna somente a redação. Os modelos Llama anteriores foram desativados para contas gratuitas/developer em agosto de 2026.
 
@@ -63,7 +65,7 @@ Há um limite local de 5 solicitações válidas por IP e 30 no total por minuto
 
 A captura é local e prefere `main`, depois `article`, e por último o corpo da página. Exclui navegação, cabeçalhos, rodapés, conteúdo oculto, formulários e campos editáveis. Não lê imagens, PDFs, canvas ou documentos de iframes. Revise o texto, porque a organização varia entre páginas.
 
-Só ao gerar, a referência revisada, tema, instruções, tipo, extensão e modelo seguem para seu backend e para a Groq. O script não lê cookies nem inclui a URL ou o título da página na mensagem. Após uma geração completa, o título e o corpo são preenchidos nos campos identificados da página, com eventos de edição para que o site reconheça o texto. O envio da atividade depende da sua ação no site.
+Só ao gerar, a referência revisada, tema, instruções, nível de escrita e extensão seguem para seu backend, que monta a solicitação para a Groq. O script não lê cookies nem inclui a URL ou o título da página na mensagem. Após uma geração completa, o título e o corpo são preenchidos nos campos identificados da página, com eventos de edição para que o site reconheça o texto. O envio da atividade depende da sua ação no site.
 
 A chave Groq fica apenas no servidor. O hub mantém seus textos na memória, sem `localStorage`, `sessionStorage` ou cookies. Ao receber os campos preenchidos, o próprio site pode salvar o rascunho pelo seu funcionamento normal. Scripts e extensões da página podem observar o conteúdo: use páginas confiáveis. Shadow DOM isola a aparência.
 
@@ -75,7 +77,7 @@ Cada geração pública consome a cota ou saldo da conta Groq configurada pelo a
 
 | Situação | Ação |
 | --- | --- |
-| HTTP 400 | Confira o modelo permitido, a extensão e o texto de referência. |
+| HTTP 400 | Confira o nível de escrita, a extensão e o texto de referência. |
 | HTTP 429 | Aguarde o prazo informado pela Groq. |
 | HTTP 502 com erro de autenticação do provedor | Confira `GROQ_API_KEY` na Vercel e reimplante. |
 | HTTP 503 | O administrador precisa configurar `GROQ_API_KEY` e reimplantar. |

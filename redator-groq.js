@@ -3,7 +3,7 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.5.1';
+  const VERSION = '1.6.0';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
@@ -28,6 +28,7 @@
       toggle.setAttribute('aria-expanded', 'true');
     }
     existing.shadowRoot?.getElementById('generate')?.focus();
+    existing.dispatchEvent(new Event('redator-reopen'));
     return;
   }
   if (!document.body || !document.documentElement || !window.AbortController) {
@@ -43,6 +44,8 @@
   let sourceKind = 'Página';
   let useConnectionWindow = false;
   let connectionBlockedByPolicy = false;
+  let generatedNotice = null;
+  let filledNotice = null;
   const host = document.createElement('div');
   host.id = PANEL_ID;
   host.dataset.redatorVersion = VERSION;
@@ -65,7 +68,6 @@
   function icon(name) {
     const paths = {
       brand:'M5 3h9l5 5v13H5z M14 3v6h5 M8 13h8 M8 17h5',
-      connection:'M14 7a4 4 0 1 1-2 7l-7 7H2v-3l7-7a4 4 0 0 1 5-4z M16 10h.01',
       source:'M8 3H4v18h16V7h-8V3z M12 3v4h8 M8 12h8 M8 16h6',
       genre:'m4 16-1 5 5-1L20 8l-4-4z M13 7l4 4',
       words:'M4 5h16 M4 10h12 M4 15h16 M4 20h9',
@@ -104,7 +106,7 @@
     .icon-button { width:24px; height:24px; display:grid; place-items:center; padding:0; background:transparent; border-color:transparent; color:#9696a3; }
     .icon-button:hover:enabled { color:white; }
     #minimize { font-size:19px; font-weight:400; }
-    #panel-body { padding:0 9px 10px; overflow:auto; overscroll-behavior:contain; max-height:calc(100dvh - 92px); scrollbar-width:thin; }
+    #panel-body { padding:0 9px 10px; overflow:auto; overscroll-behavior:contain; max-height:calc(75dvh - 92px); scrollbar-width:thin; }
     .settings { padding:4px 0; border-top:1px solid #ffffff0c; }
     .setting-row { display:flex; align-items:center; gap:8px; width:100%; height:35px; padding:0 7px;
       border:0; border-radius:7px; background:transparent; text-align:left; }
@@ -155,22 +157,48 @@
     .choice[aria-pressed=true] { background:#24242c; border-color:#ffffff65; }
     .choice[aria-pressed=true] .check { background:#ededf1; border-color:#ededf1; color:#111; }
     .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
-    @media (max-width:640px) { .main[data-secondary-open=true] { display:none; } }
-    @media (prefers-reduced-motion:no-preference) {
-      button { transition:background .14s,border-color .14s; }
-      .secondary:not([hidden]) { animation:hub-in .17s ease-out; }
-      @keyframes hub-in { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:translateY(0); } }
+    @media (max-width:640px) {
+      .main[data-secondary-open=true] { display:none; }
+      .secondary { max-height:calc(75dvh - 32px); }
     }
+    .primary { position:relative; overflow:hidden; }
+    .choice .choice-label { font-size:12px; }
+    .choice { margin-bottom:8px; }
+    @media (prefers-reduced-motion:no-preference) {
+      button,a,input,textarea,.setting-row,.summary,.check { transition:background .18s,border-color .18s,color .18s,box-shadow .18s,transform .18s,opacity .18s; }
+      button:active:enabled { transform:scale(.97); }
+      .setting-row:hover:enabled { transform:translateX(2px); }
+      .choice:hover:enabled { transform:translateX(3px); border-color:#ffffff50; }
+      .choice[aria-pressed=true] .check { animation:check-in .22s cubic-bezier(.2,.8,.2,1); }
+      input:focus,textarea:focus { border-color:#bdbdc9; box-shadow:0 0 0 3px #ffffff09; }
+      #generate.is-busy>svg { animation:working-spin 2.2s linear infinite; }
+      #generate.is-busy::after { content:''; position:absolute; inset:0; background:linear-gradient(110deg,transparent 20%,#00000013 50%,transparent 80%); animation:working-sweep 1.7s ease-in-out infinite; pointer-events:none; }
+      @keyframes check-in { from { opacity:0; transform:scale(.55); } to { opacity:1; transform:scale(1); } }
+      @keyframes working-spin { to { transform:rotate(360deg); } }
+      @keyframes working-sweep { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
+    }
+
+.notification-stack{position:fixed;z-index:2147483647;top:max(20px,env(safe-area-inset-top));right:max(20px,env(safe-area-inset-right));display:flex;flex-direction:column;gap:10px;width:300px;max-width:calc(100vw - 32px);max-height:25dvh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;pointer-events:none;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f4f4f5;isolation:isolate}
+.notification{position:relative;display:flex;flex-shrink:0;align-items:flex-start;gap:11px;box-sizing:border-box;padding:15px 12px 15px 14px;width:100%;border:1px solid #303033;border-radius:15px;background:linear-gradient(135deg,#19191c,#101012);box-shadow:0 16px 45px #0005,0 3px 10px #0003,inset 0 1px 0 #ffffff07;pointer-events:auto;overflow-wrap:anywhere;transform-origin:top right}
+.notification[hidden]{display:none!important}
+.notification-icon{display:grid;place-items:center;flex:none;width:23px;height:23px;margin-top:1px;border:1px solid #525256;border-radius:50%;background:#ffffff09;color:#ededf0;font-size:13px;font-weight:700;line-height:1}
+.notification[data-kind="error"] .notification-icon{color:#ffb5b5;border-color:#955151;background:#a33a3a1c}
+.notification[data-kind="warning"] .notification-icon{color:#e8d09a;border-color:#80704c;background:#a485351a}
+.notification-copy{min-width:0;flex:1;padding-top:2px}
+.notification-title{display:block;font-size:12px;line-height:1.5;font-weight:650;letter-spacing:.01em;color:#f7f7f8}
+.notification-message{margin:4px 0 0;color:#a9a9b1;font-size:11px;line-height:1.55}
+.notification-message[hidden]{display:none!important}
+.notification-dismiss{display:grid;place-items:center;flex:none;box-sizing:border-box;width:25px;height:25px;margin:-1px -2px 0 0;padding:0;border:0;border-radius:7px;background:transparent;color:#8e8e98;font:20px/1 Arial,sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease,transform .16s ease}
+.notification-dismiss:hover{background:#ffffff0d;color:#fff}
+.notification-dismiss:active{transform:scale(.92)}
+.notification-dismiss:focus-visible{outline:2px solid #d3d3dc;outline-offset:2px;color:#fff}
+@media(max-width:560px){.notification-stack{top:max(12px,env(safe-area-inset-top));right:16px;left:16px;width:auto;max-width:none;gap:8px}.notification{border-radius:13px;padding-top:13px;padding-bottom:13px}}
+@media(prefers-reduced-motion:reduce){.notification-dismiss{transition:none}}
   `);
 
-  const modelInput = element('input', { id:'model', value:'openai/gpt-oss-20b', autoComplete:'off', spellcheck:false, maxLength:160 });
   const contextInput = element('textarea', { id:'context', spellcheck:false, maxLength:MAX_CONTEXT, 'aria-describedby':'context-help context-count' });
   const themeInput = element('input', { id:'theme', placeholder:'Opcional: se vazio, inferir a partir do texto', maxLength:300 });
-  const genreInput = element('select', { id:'genre', hidden:true, 'aria-label':'Tipo de redação' }, [
-    element('option', { value:'dissertativa' }, 'Dissertativa argumentativa'),
-    element('option', { value:'enem' }, 'Modelo ENEM'),
-    element('option', { value:'expositiva' }, 'Expositiva')
-  ]);
+  const levelInput = element('select', { id:'level', hidden:true, 'aria-label':'Nível de escrita' }, [1,2,3,4,5].map(n => element('option',{value:String(n),selected:n === 3},String(n))));
   const wordsInput = element('select', { id:'words', hidden:true, 'aria-label':'Extensão aproximada' }, [250,350,500,700].map(n => element('option', { value:String(n), selected:n === 350 }, `${n} palavras`)));
   const instructionsInput = element('textarea', { id:'instructions', maxLength:2000, placeholder:'Opcional: tom, público, argumentos a desenvolver…' });
   const resultInput = element('textarea', { id:'result', readOnly:true, placeholder:'A redação aparecerá aqui.', 'aria-label':'Redação gerada' });
@@ -194,9 +222,8 @@
   const summaries = {};
   const triggers = {};
   const paneInfo = {
-    connection:['Modelo da Groq','Uso público, sem login ou código de acesso.'],
     source:['Texto de referência','Escolha a origem e confira o conteúdo.'],
-    genre:['Tipo de redação','Escolheu, pronto. A opção volta para o hub.'],
+    genre:['Nível de escrita','Escolha como você quer que a redação seja escrita.'],
     words:['Extensão aproximada','Qual o tamanho da sua redação?'],
     writing:['Tema e instruções','Dê uma direção à sua redação.'],
     result:['Sua redação','Revise antes de copiar ou baixar.']
@@ -207,19 +234,20 @@
     return triggers[name];
   }
   const body = element('div', { id:'panel-body' }, [
-    element('div', { className:'settings' }, [setting('connection','Modelo'),setting('source','Referência'),setting('genre','Tipo'),setting('words','Extensão'),setting('writing','Tema'),setting('result','Redação')]),
+    element('div', { className:'settings' }, [setting('source','Referência'),setting('genre','Tipo'),setting('words','Extensão'),setting('writing','Tema'),setting('result','Redação')]),
     element('div', { className:'generate-row' }, [generate,cancel]),status,retryConnection,connectionHelp
   ]);
   const main = element('section', { id:'main-panel', className:'card main', role:'region', 'aria-label':'Redator Groq', 'data-secondary-open':'false' }, [
     element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Redator'),element('span',{ className:'badge' },'GROQ')]),minimize,close]),body
   ]);
-  const saveConnection = element('button', { id:'save-connection', type:'button', className:'primary full' }, 'Usar este modelo');
   const saveSource = element('button', { id:'save-source', type:'button', className:'primary full' }, 'Usar este texto');
   const saveWriting = element('button', { id:'save-writing', type:'button', className:'primary full' }, 'Usar estas instruções');
-  const genreOptions = [
-    ['dissertativa','Argumentativa','Defenda uma ideia com argumentos e conclusão.'],
-    ['enem','Modelo ENEM','Tese, dois argumentos e proposta de intervenção.'],
-    ['expositiva','Expositiva','Explique o assunto com clareza e organização.']
+  const levelOptions = [
+    [1,'Bem simples','Frases curtas, vocabulário comum, pouca elaboração'],
+    [2,'Fraco','Estrutura simples, argumentos pouco aprofundados'],
+    [3,'Médio','Aluno mediano do ensino médio — o mais natural'],
+    [4,'Bom','Bem organizado, vocabulário variado, boa coesão'],
+    [5,'Máximo','A melhor resposta possível para a proposta']
   ];
   const wordOptions = [[250,'Breve'],[350,'Equilibrada'],[500,'Detalhada'],[700,'Longa']];
   function choice(kind,value,label,description) {
@@ -228,16 +256,12 @@
     ]);
   }
   const panes = {
-    connection:element('div',{ id:'pane-connection', className:'pane', hidden:true },[
-      element('label',{ htmlFor:'model' },'Modelo'),modelInput,
-      element('small',{},'Modelos: openai/gpt-oss-20b ou openai/gpt-oss-120b. A API é pública; a chave da Groq fica no servidor.'),saveConnection
-    ]),
     source:element('div',{ id:'pane-source', className:'pane', hidden:true },[
       element('div',{ className:'row' },[capturePage,captureSelection]),
       element('label',{ htmlFor:'context' },'Texto de referência'),contextInput,counter,
       element('p',{ id:'context-help', className:'muted' },'Confira o conteúdo antes de gerar. Este texto será enviado à Groq.'),saveSource
     ]),
-    genre:element('div',{ id:'pane-genre', className:'pane', hidden:true },[genreInput,...genreOptions.map(([value,label,desc]) => choice('genre',value,label,desc))]),
+    genre:element('div',{ id:'pane-genre', className:'pane', hidden:true },[levelInput,...levelOptions.map(([value,label,desc]) => choice('level',value,`${value} — ${label}`,desc))]),
     words:element('div',{ id:'pane-words', className:'pane', hidden:true },[wordsInput,...wordOptions.map(([value,desc]) => choice('words',value,`${value} palavras`,desc))]),
     writing:element('div',{ id:'pane-writing', className:'pane', hidden:true },[
       element('label',{ htmlFor:'theme' },'Tema'),themeInput,
@@ -263,6 +287,167 @@
   const announcement = element('span',{ className:'sr-only', role:'status', 'aria-live':'polite', 'aria-atomic':'true' });
   shadow.append(style,main,secondary,announcement);
   document.documentElement.append(host);
+
+  // BEGIN_HUB_MOTION
+  function createHubMotion({shadow,host,reducedMotion}){
+    const doc=host.ownerDocument, win=doc.defaultView;
+    const media=win.matchMedia?win.matchMedia('(prefers-reduced-motion: reduce)'):null;
+    const animations=new Map(), revisions=new WeakMap(), notices=new Map();
+    let disposed=false, sequence=0;
+    const stack=doc.createElement('div');
+    stack.className='notification-stack';
+    stack.id='notifications';
+    stack.setAttribute('aria-label','Notificações');
+    shadow.appendChild(stack);
+    const reduce=()=>{
+      try{return !!(media&&media.matches)||(typeof reducedMotion==='function'?!!reducedMotion():typeof reducedMotion==='object'?!!reducedMotion?.matches:!!reducedMotion);}
+      catch(_){return !!(media&&media.matches);}
+    };
+    function stop(element){
+      const revision=(revisions.get(element)||0)+1;
+      revisions.set(element,revision);
+      const current=animations.get(element);
+      if(current){animations.delete(element);try{current.cancel();}catch(_){}}
+      return revision;
+    }
+    function play(element,frames,options){
+      if(disposed||!element.isConnected||reduce()||typeof element.animate!=='function')return null;
+      try{
+        const animation=element.animate(frames,options);
+        animations.set(element,animation);
+        const clear=()=>{if(animations.get(element)===animation)animations.delete(element);};
+        animation.finished.then(clear,clear);
+        return animation;
+      }catch(_){return null;}
+    }
+    function enter(element,kind='panel'){
+      if(disposed||!element)return;
+      stop(element);
+      element.hidden=false;
+      const distance=kind==='notification'?'10px':'7px';
+      const frames=kind==='body' ? [
+        {height:'0px',opacity:0,paddingBottom:'0px',overflow:'hidden'},
+        {height:element.scrollHeight+'px',opacity:1,paddingBottom:'10px',overflow:'hidden'}
+      ] : [
+        {opacity:0,transform:kind==='notification'?'translateX('+distance+')':'translateY('+distance+') scale(.985)'},
+        {opacity:1,transform:'translate(0,0) scale(1)'}
+      ];
+      return play(element,frames,{duration:kind==='notification'?220:190,easing:'cubic-bezier(.2,.8,.2,1)'});
+    }
+    async function exit(element,{remove=false,hide=true,collapse=false}={}){
+      if(disposed||!element)return false;
+      const revision=stop(element);
+      const frames=collapse ? [
+        {height:element.getBoundingClientRect().height+'px',opacity:1,paddingBottom:'10px',overflow:'hidden'},
+        {height:'0px',opacity:0,paddingBottom:'0px',overflow:'hidden'}
+      ] : [{opacity:1,transform:'translate(0,0) scale(1)'},{opacity:0,transform:'translateY(-5px) scale(.985)'}];
+      const animation=play(element,frames,{duration:140,easing:'ease-in'});
+      if(animation){try{await animation.finished;}catch(_){return false;}}
+      if(disposed||revisions.get(element)!==revision||!element.isConnected)return false;
+      if(remove)element.remove();
+      else if(hide)element.hidden=true;
+      return true;
+    }
+    function pulse(element){
+      if(disposed||!element)return;
+      stop(element);
+      return play(element,[{transform:'scale(1)'},{transform:'scale(1.025)'},{transform:'scale(1)'}],{duration:210,easing:'ease-out'});
+    }
+    function busy(button,value){
+      if(disposed||!button)return;
+      button.classList.toggle('is-busy',!!value);
+    }
+    function clearTimer(record){
+      if(record.timer!==null){win.clearTimeout(record.timer);record.timer=null;}
+    }
+    function arm(record){
+      clearTimer(record);
+      if(record.closing||record.hovered||record.focused||record.remaining<=0||disposed)return;
+      record.started=Date.now();
+      record.timer=win.setTimeout(()=>{record.timer=null;dismiss(record);},record.remaining);
+    }
+    function pause(record){
+      if(record.timer!==null){record.remaining=Math.max(1,record.remaining-(Date.now()-record.started));clearTimer(record);}
+    }
+    function removeNow(record){
+      clearTimer(record);
+      stop(record.node);
+      record.node.remove();
+      if(notices.get(record.id)===record)notices.delete(record.id);
+    }
+    function dismiss(record){
+      if(disposed||record.closing||notices.get(record.id)!==record)return;
+      clearTimer(record);
+      record.closing=true;
+      exit(record.node,{remove:true,hide:false}).then(removed=>{
+        if(removed&&record.closing&&notices.get(record.id)===record)notices.delete(record.id);
+      });
+    }
+    function toast({id,title,message='',kind='success',duration}={}){
+      if(disposed)return ()=>{};
+      id=id==null?'notice-'+(++sequence):String(id);
+      kind=['success','error','warning','info'].includes(kind)?kind:'info';
+      let record=notices.get(id);
+      if(!record){
+        while(notices.size>=3)removeNow(notices.values().next().value);
+        const node=doc.createElement('div'), icon=doc.createElement('span');
+        const copy=doc.createElement('div'), heading=doc.createElement('strong');
+        const detail=doc.createElement('p'), close=doc.createElement('button');
+        node.className='notification';
+        icon.className='notification-icon';
+        icon.setAttribute('aria-hidden','true');
+        copy.className='notification-copy';
+        heading.className='notification-title';
+        detail.className='notification-message';
+        close.className='notification-close notification-dismiss';
+        close.type='button';
+        close.textContent='×';
+        close.setAttribute('aria-label','Fechar notificação');
+        copy.append(heading,detail);
+        node.append(icon,copy,close);
+        record={id,node,icon,heading,detail,timer:null,remaining:0,started:0,hovered:false,focused:false,closing:false};
+        close.addEventListener('click',()=>dismiss(record));
+        node.addEventListener('mouseenter',()=>{record.hovered=true;pause(record);});
+        node.addEventListener('mouseleave',()=>{record.hovered=false;arm(record);});
+        node.addEventListener('focusin',()=>{record.focused=true;pause(record);});
+        node.addEventListener('focusout',event=>{
+          if(!node.contains(event.relatedTarget)){record.focused=false;arm(record);}
+        });
+        notices.set(id,record);
+        stack.appendChild(node);
+      }
+      clearTimer(record);
+      record.closing=false;
+      record.node.dataset.kind=kind;
+      record.node.dataset.notificationId=id;
+      record.node.setAttribute('role',kind==='error'?'alert':'status');
+      record.node.setAttribute('aria-live',kind==='error'?'assertive':'polite');
+      record.node.setAttribute('aria-atomic','true');
+      record.icon.textContent=kind==='success'?'✓':kind==='error'?'!':kind==='warning'?'!':'i';
+      record.heading.textContent=String(title==null?'':title);
+      record.detail.textContent=String(message==null?'':message);
+      record.detail.hidden=!record.detail.textContent;
+      const requested=Number(duration);
+      record.remaining=duration!=null&&Number.isFinite(requested)&&requested>=0?requested:kind==='error'?7000:5000;
+      enter(record.node,'notification');
+      stack.scrollTop=stack.scrollHeight;
+      arm(record);
+      return ()=>dismiss(record);
+    }
+    function dispose(){
+      if(disposed)return;
+      disposed=true;
+      notices.forEach(record=>clearTimer(record));
+      notices.clear();
+      animations.forEach(animation=>{try{animation.cancel();}catch(_){}});
+      animations.clear();
+      stack.remove();
+    }
+    return {toast,enter,exit,pulse,busy,dispose};
+  }
+  // END_HUB_MOTION
+  const hubMotion = createHubMotion({shadow,host});
+  hubMotion.enter(main);
 
   // BEGIN_PAGE_FILL
   /** Local, conservative form discovery and filling; never submits a form. */
@@ -676,19 +861,20 @@
 
   const pageFill = createPageFill({ excludeRoot:host, onStatus:notice => {
     if (!closed && notice?.message) setStatus(notice.message,notice.status === 'error' ? 'error' : 'info');
+    if (!closed && notice?.status === 'selected') hubMotion.toast({id:'field-selection',title:'Campo selecionado',message:notice.message});
   } });
 
   function syncSummaries() {
-    summaries.connection.textContent = ({ 'openai/gpt-oss-20b':'GPT-OSS · 20B', 'openai/gpt-oss-120b':'GPT-OSS · 120B' })[modelInput.value.trim()] || modelInput.value.trim() || 'Selecionar';
     summaries.source.textContent = contextInput.value.trim() ? `${sourceKind} · ${contextInput.value.length.toLocaleString('pt-BR')} car.` : 'Adicionar texto';
-    summaries.genre.textContent = genreOptions.find(([value]) => value === genreInput.value)?.[1] || 'Argumentativa';
+    const level = levelOptions.find(([value]) => value === Number(levelInput.value)) || levelOptions[2];
+    summaries.genre.textContent = `${level[0]} — ${level[1]}`;
     summaries.words.textContent = `${wordsInput.value} palavras`;
     summaries.writing.textContent = themeInput.value.trim() || (instructionsInput.value.trim() ? 'Personalizado' : 'Automático');
     const count = resultInput.value.match(/\S+/gu)?.length || 0;
     summaries.result.textContent = count ? `${count.toLocaleString('pt-BR')} palavras` : 'Aguardando';
     for (const summary of Object.values(summaries)) summary.title = summary.textContent;
     for (const button of shadow.querySelectorAll('[data-choice]')) {
-      const selected = (button.dataset.choice === 'genre' ? genreInput : wordsInput).value === button.dataset.value;
+      const selected = (button.dataset.choice === 'level' ? levelInput : wordsInput).value === button.dataset.value;
       button.setAttribute('aria-pressed',String(selected));
     }
   }
@@ -698,7 +884,7 @@
     const opener = paneOpener;
     activePane = null;
     paneOpener = null;
-    secondary.hidden = true;
+    hubMotion.exit(secondary);
     main.dataset.secondaryOpen = 'false';
     for (const trigger of Object.values(triggers)) trigger.setAttribute('aria-expanded','false');
     if (restoreFocus && !closed) opener?.focus({ preventScroll:true });
@@ -712,7 +898,8 @@
     for (const [key,trigger] of Object.entries(triggers)) trigger.setAttribute('aria-expanded',String(key === name));
     secondaryTitle.textContent = paneInfo[name][0];
     secondaryDescription.textContent = paneInfo[name][1];
-    secondary.hidden = false;
+    hubMotion.enter(secondary);
+    hubMotion.enter(panes[name]);
     main.dataset.secondaryOpen = 'true';
     if (focus) {
       const first = panes[name].querySelector('input:not(:disabled),textarea:not(:disabled),button[aria-pressed=true]:not(:disabled),button:not(:disabled)');
@@ -735,12 +922,13 @@
   }
 
   function setBusy(busy) {
-    for (const control of [modelInput,contextInput,themeInput,genreInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,retryConnection,saveConnection,saveSource,saveWriting,...shadow.querySelectorAll('[data-choice]')]) {
+    for (const control of [contextInput,themeInput,levelInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,retryConnection,saveSource,saveWriting,...shadow.querySelectorAll('[data-choice]')]) {
       control.disabled = busy;
     }
     for (const control of [fillPage,pickTitle,pickEssay]) control.disabled = busy || !resultInput.value.trim();
     cancel.hidden = !busy;
     generateText.textContent = busy ? 'Gerando…' : 'Gerar redação';
+    hubMotion.busy(generate,busy);
     body.setAttribute('aria-busy', String(busy));
   }
 
@@ -826,6 +1014,7 @@
       const content = readPage();
       sourceKind = 'Página';
       applyContext(content.text,'Página lida.',content.truncated);
+      if (content.text) hubMotion.toast({id:'reference-read',title:'Página lida',message:'O texto de referência está pronto para revisão.',kind:content.truncated ? 'warning' : 'success'});
       return Boolean(content.text);
     } catch {
       setStatus('Não foi possível ler esta página. Cole o texto manualmente no campo de referência.','error');
@@ -845,18 +1034,18 @@
   function createRequest() {
     return {
       context:contextInput.value.trim(),theme:themeInput.value.trim(),
-      genre:genreInput.value,words:Number(wordsInput.value),
-      instructions:instructionsInput.value.trim(),model:modelInput.value.trim()
+      level:Number(levelInput.value),words:Number(wordsInput.value),
+      instructions:instructionsInput.value.trim()
     };
   }
 
   function httpError(response, payload) {
     const messages = {
-      400:'A API recusou os parâmetros. Confira o modelo e o texto de referência.',
+      400:'A solicitação foi recusada. Confira as opções e o texto de referência.',
       401:'O servidor recusou a solicitação. Recarregue o script ou tente novamente mais tarde.',
       402:'Sua conta Groq precisa de saldo ou de uma alteração no plano.',
       403:'A API negou o acesso à solicitação. Tente novamente mais tarde.',
-      404:'Modelo ou recurso não encontrado. Confira o identificador do modelo.',
+      404:'O serviço não foi encontrado. Reabra o favorito e tente novamente.',
       413:'O texto excedeu o limite aceito pela Groq. Reduza o texto de referência.',
       429:'Limite de uso atingido. Aguarde antes de tentar novamente.',
       503:'O administrador ainda precisa configurar GROQ_API_KEY na Vercel.',
@@ -961,6 +1150,9 @@
     const outcome = await pageFill.fill({title:resultTitleInput.value.trim(),essay:resultInput.value,signal});
     if (closed || signal?.aborted) return null;
     setStatus(`Redação pronta. ${outcome.message}`,['ready','filled'].includes(outcome.status) ? 'info' : 'warning');
+    const complete = outcome.filledTitle && outcome.filledEssay;
+    const partial = outcome.filledTitle || outcome.filledEssay;
+    filledNotice = hubMotion.toast({id:'essay-filled',title:complete ? 'Redação preenchida' : partial ? 'Redação parcialmente preenchida' : 'Escolha os campos',message:outcome.message,kind:complete ? 'success' : 'warning'});
     return outcome;
   }
 
@@ -986,14 +1178,12 @@
       openPane('source');
       return;
     }
-    if (!modelInput.value.trim()) {
-      setStatus('Informe o identificador de um modelo da Groq.','error');
-      openPane('connection');
-      modelInput.focus();
-      return;
-    }
     closePane(false);
     pageFill.cancelPick?.();
+    generatedNotice?.();
+    filledNotice?.();
+    generatedNotice = null;
+    filledNotice = null;
     const request = { controller:new AbortController(), reason:null, timer:null };
     activeRequest = request;
     request.timer = window.setTimeout(() => {
@@ -1027,7 +1217,7 @@
       const choice = payload?.choices?.[0];
       const content = choice?.message?.content;
       if (typeof content !== 'string' || !content.trim()) {
-        throw new Error('A Groq devolveu uma resposta vazia ou em formato inválido. Tente novamente ou escolha outro modelo.');
+        throw new Error('O serviço devolveu uma resposta vazia ou em formato inválido. Tente novamente.');
       }
       resultInput.value = content.trim();
       resultTitleInput.value = typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim().slice(0,200) : input.theme || 'Reflexões sobre o tema';
@@ -1038,18 +1228,23 @@
       syncSummaries();
       if (choice.finish_reason === 'length') {
         setStatus('O limite de saída foi atingido e a redação pode estar incompleta. O trecho recebido está abaixo; tente uma extensão menor.','warning');
+        hubMotion.toast({id:'generation-error',title:'Redação incompleta',message:'O texto ficou disponível no hub. Tente uma extensão menor.',kind:'warning'});
       } else if (choice.finish_reason && choice.finish_reason !== 'stop') {
         setStatus('A resposta terminou antes da conclusão normal. Revise o texto recebido e tente novamente se necessário.','warning');
+        hubMotion.toast({id:'generation-error',title:'Resposta interrompida',message:'Revise o trecho recebido antes de usar.',kind:'warning'});
       } else {
+        generatedNotice = hubMotion.toast({id:'essay-generated',title:'Redação realizada',message:'Título e texto gerados. Agora é hora de revisar.'});
         await fillPageFields(request.controller.signal);
         if (request.controller.signal.aborted) throw new Error('aborted');
         if (closed) return;
       }
-      if (!body.hidden) openPane('result');
+      if (minimize.getAttribute('aria-expanded') === 'true') openPane('result');
     } catch (error) {
       if (closed) return;
       if (request.controller.signal.aborted) {
         setStatus(request.reason === 'timeout' ? 'A Groq demorou mais de 90 segundos. A solicitação foi interrompida; tente novamente.' : 'Geração cancelada. Você pode tentar novamente.','warning');
+        generatedNotice?.();
+        hubMotion.toast({id:'generation-error',title:request.reason === 'timeout' ? 'Tempo de espera esgotado' : 'Geração cancelada',message:'Você pode tentar novamente quando quiser.',kind:'warning'});
       } else if (error instanceof TypeError) {
         retryConnection.hidden = false;
         connectionHelp.hidden = false;
@@ -1061,6 +1256,7 @@
         }
         setStatus(error?.message || 'Ocorreu um erro inesperado ao gerar a redação.','error');
       }
+      if (!request.controller.signal.aborted) hubMotion.toast({id:'generation-error',title:'Não foi possível gerar',message:status.textContent,kind:'error'});
     } finally {
       clearTimeout(request.timer);
       if (activeRequest === request) activeRequest = null;
@@ -1071,6 +1267,8 @@
   function cleanup() {
     if (closed) return;
     closed = true;
+    host.removeAttribute('id');
+    host.style.setProperty('pointer-events','none','important');
     if (activeRequest) {
       clearTimeout(activeRequest.timer);
       activeRequest.controller.abort();
@@ -1085,7 +1283,10 @@
     document.removeEventListener('keydown',outsideKeydown);
     document.removeEventListener('securitypolicyviolation',observeConnectionPolicy);
     window.removeEventListener('pagehide',cleanup);
-    host.remove();
+    Promise.all([hubMotion.exit(main,{hide:false}),hubMotion.exit(secondary,{hide:false})]).finally(() => {
+      hubMotion.dispose();
+      host.remove();
+    });
   }
 
   for (const [name,trigger] of Object.entries(triggers)) trigger.addEventListener('click',() => {
@@ -1095,33 +1296,27 @@
   secondaryClose.addEventListener('click',() => closePane());
   for (const button of shadow.querySelectorAll('[data-choice]')) button.addEventListener('click',() => {
     const kind = button.dataset.choice;
-    const input = kind === 'genre' ? genreInput : wordsInput;
+    const input = kind === 'level' ? levelInput : wordsInput;
     input.value = button.dataset.value;
     syncSummaries();
-    announcement.textContent = `${kind === 'genre' ? 'Tipo' : 'Extensão'}: ${summaries[kind].textContent}.`;
-    closePane();
-  });
-  saveConnection.addEventListener('click',() => {
-    if (!modelInput.value.trim()) {
-      modelInput.setCustomValidity('Informe o identificador do modelo.');
-      modelInput.reportValidity();
-      return;
-    }
-    syncSummaries();
-    announcement.textContent = 'Configuração da Groq atualizada.';
-    setStatus('Configuração da Groq atualizada.');
+    const summary = summaries[kind === 'level' ? 'genre' : 'words'];
+    announcement.textContent = `${kind === 'level' ? 'Tipo' : 'Extensão'}: ${summary.textContent}.`;
+    hubMotion.pulse(summary);
+    hubMotion.toast({id:'setting-choice',title:kind === 'level' ? 'Tipo selecionado' : 'Extensão selecionada',message:summary.textContent});
     closePane();
   });
   saveSource.addEventListener('click',() => {
     syncSummaries();
     announcement.textContent = 'Texto de referência selecionado.';
     setStatus('Texto de referência atualizado.');
+    hubMotion.toast({id:'reference-read',title:'Referência atualizada',message:'O texto selecionado será usado na próxima geração.'});
     closePane();
   });
   saveWriting.addEventListener('click',() => {
     syncSummaries();
     announcement.textContent = 'Tema e instruções atualizados.';
     setStatus('Tema e instruções atualizados.');
+    hubMotion.toast({id:'writing-saved',title:'Tema atualizado',message:'Suas instruções foram selecionadas.'});
     closePane();
   });
   capturePage.addEventListener('click',() => {
@@ -1132,12 +1327,13 @@
     if (savedSelection) {
       sourceKind = 'Seleção';
       applyContext(savedSelection,'Trecho selecionado capturado.');
+      hubMotion.toast({id:'reference-read',title:'Trecho selecionado',message:'A seleção foi capturada como referência.'});
       closePane();
     }
     else setStatus('Selecione um texto fora do painel e clique em Ler seleção. Você também pode colar o texto manualmente.','warning');
   });
   contextInput.addEventListener('input',() => { sourceKind = 'Manual'; updateCounter(); });
-  for (const input of [modelInput,themeInput,instructionsInput]) input.addEventListener('input',() => {
+  for (const input of [themeInput,instructionsInput]) input.addEventListener('input',() => {
     input.setCustomValidity('');
     syncSummaries();
   });
@@ -1159,11 +1355,17 @@
   });
   minimize.addEventListener('click',() => {
     closePane(false);
-    body.hidden = !body.hidden;
-    minimize.textContent = body.hidden ? '+' : '−';
-    minimize.title = body.hidden ? 'Expandir' : 'Recolher';
-    minimize.setAttribute('aria-label',body.hidden ? 'Expandir hub' : 'Recolher hub');
-    minimize.setAttribute('aria-expanded', String(!body.hidden));
+    const collapse = minimize.getAttribute('aria-expanded') === 'true';
+    if (collapse) hubMotion.exit(body,{collapse:true});
+    else hubMotion.enter(body,'body');
+    minimize.textContent = collapse ? '+' : '−';
+    minimize.title = collapse ? 'Expandir' : 'Recolher';
+    minimize.setAttribute('aria-label',collapse ? 'Expandir hub' : 'Recolher hub');
+    minimize.setAttribute('aria-expanded', String(!collapse));
+  });
+  host.addEventListener('redator-reopen',() => {
+    hubMotion.enter(main);
+    hubMotion.enter(body,'body');
   });
   close.addEventListener('click',cleanup);
   document.addEventListener('selectionchange',rememberSelection);
@@ -1190,12 +1392,16 @@
     try {
       if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
       await navigator.clipboard.writeText(text);
-      if (!closed) setStatus('Redação copiada.');
+      if (!closed) {
+        setStatus('Redação copiada.');
+        hubMotion.toast({id:'copy-result',title:'Redação copiada',message:'O texto está na área de transferência.'});
+      }
     } catch {
       if (closed) return;
       resultInput.focus();
       resultInput.select();
       setStatus('O navegador bloqueou a cópia automática. O texto está selecionado: use Ctrl+C ou ⌘C.','warning');
+      hubMotion.toast({id:'copy-result',title:'Cópia manual',message:'O texto está selecionado. Use Ctrl+C ou ⌘C.',kind:'warning'});
     }
   });
   download.addEventListener('click',() => {
@@ -1205,6 +1411,7 @@
     shadow.append(anchor);
     anchor.click();
     anchor.remove();
+    hubMotion.toast({id:'download-result',title:'Arquivo preparado',message:'A redação em .txt está pronta para baixar.'});
     window.setTimeout(() => URL.revokeObjectURL(url),1000);
   });
 

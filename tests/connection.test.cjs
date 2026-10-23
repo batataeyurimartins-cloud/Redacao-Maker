@@ -13,8 +13,8 @@ const CHANNEL = 'connection-test-channel-1234567890';
 const FIXTURE = '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Referência</title></head><body><main><h1>Bibliotecas e inclusão digital</h1><p>Bibliotecas públicas oferecem acesso à internet e à educação.</p></main><button id="open-relay">Abrir conexão</button></body></html>';
 const INPUT = {
   context:'Bibliotecas públicas oferecem acesso gratuito à internet e formação digital.',
-  theme:'Inclusão digital e cidadania', genre:'dissertativa', words:350,
-  instructions:'Explique o papel das bibliotecas públicas.', model:'openai/gpt-oss-20b'
+  theme:'Inclusão digital e cidadania', level:3, words:350,
+  instructions:'Explique o papel das bibliotecas públicas.'
 };
 const test = (name, run) => nodeTest(name, { timeout:20000 }, run);
 
@@ -42,7 +42,7 @@ function control(page, id) {
 }
 
 async function fixture(t, options = {}) {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ reducedMotion:'reduce' });
   context.setDefaultTimeout(5000);
   t.after(() => context.close());
   const requests = [];
@@ -109,10 +109,12 @@ async function configure(page) {
   if (!await control(page, 'pane-source').isVisible()) await control(page, 'open-source').click();
   await control(page, 'context').fill(INPUT.context);
   await control(page, 'save-source').click();
+  await control(page, 'secondary-panel').waitFor({ state:'hidden' });
   if (!await control(page, 'pane-writing').isVisible()) await control(page, 'open-writing').click();
   await control(page, 'theme').fill(INPUT.theme);
   await control(page, 'instructions').fill(INPUT.instructions);
   await control(page, 'save-writing').click();
+  await control(page, 'secondary-panel').waitFor({ state:'hidden' });
 }
 
 async function ready(page) {
@@ -186,6 +188,7 @@ test('CSP-blocked fetch offers an explicit auxiliary window and returns the same
   assert.equal(requests[0].headers()['x-api-key'], undefined);
 
   await control(page, 'secondary-close').click();
+  await control(page, 'secondary-panel').waitFor({ state:'hidden' });
   const nextPopup = page.waitForEvent('popup');
   await control(page, 'generate').click();
   const next = await nextPopup;

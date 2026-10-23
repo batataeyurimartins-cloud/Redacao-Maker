@@ -32,7 +32,7 @@ function reply(content = 'Redação de exemplo, com introdução, desenvolviment
 }
 
 async function mount(t, handler = async route => jsonResponse(route, 200, reply()), html = fixture) {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ reducedMotion: 'reduce' });
   const page = await context.newPage();
   const directProviderRequests = [];
   t.after(() => context.close());
@@ -88,6 +88,7 @@ async function openPane(page, pane) {
 async function closeSecondary(page) {
   if (await control(page, 'secondary-panel').isVisible()) {
     await control(page, 'secondary-close').click();
+    await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   }
 }
 
@@ -95,6 +96,7 @@ async function configure(page, context = 'A inclusão digital ainda enfrenta bar
   await openPane(page, 'source');
   await control(page, 'context').fill(context);
   await control(page, 'save-source').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
 }
 
 async function waitReady(page) {
@@ -148,22 +150,21 @@ test('sends anonymous requests with edited context and settings and renders outp
   });
   const context = 'CONTEXTO_EDITADO: bibliotecas públicas oferecem internet gratuita.';
   await configure(page, context);
-  await openPane(page, 'connection');
-  await control(page, 'model').fill('openai/gpt-oss-20b');
-  await control(page, 'save-connection').click();
+  await openPane(page, 'genre');
+  await control(page, 'choice-level-4').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   await openPane(page, 'writing');
   await control(page, 'theme').fill('Inclusão digital e cidadania');
   await control(page, 'instructions').fill('Discuta o papel das bibliotecas públicas.');
   await control(page, 'save-writing').click();
   await generateAndWait(page);
   assert.equal(request.headers.authorization, undefined);
-  assert.equal(request.data.model, 'openai/gpt-oss-20b');
-  assert.deepEqual(Object.keys(request.data).sort(), ['context', 'genre', 'instructions', 'model', 'theme', 'words']);
+  assert.deepEqual(Object.keys(request.data).sort(), ['context', 'instructions', 'level', 'theme', 'words']);
   assert.equal(request.data.context, context);
   assert.equal(request.data.theme, 'Inclusão digital e cidadania');
   assert.equal(request.data.instructions, 'Discuta o papel das bibliotecas públicas.');
-  assert.equal(request.data.genre, 'dissertativa');
-  assert.equal(Number(request.data.words), 350);
+  assert.equal(request.data.level, 4);
+  assert.equal(request.data.words, 350);
   const sent = JSON.stringify(request.data);
   assert.doesNotMatch(sent, /custo da conexão|SEGREDO_/);
   assert.equal(await control(page, 'result').inputValue(), output);
@@ -272,21 +273,29 @@ test('closing the panel aborts a pending generation and removes the UI', async t
   assert.equal(await page.locator('#redator-groq-console').count(), 0);
 });
 
-test('never persists reference text or model settings in browser storage', async t => {
+test('never persists reference text or writing settings in browser storage', async t => {
   const page = await mount(t);
-  await openPane(page, 'connection');
-  await control(page, 'model').fill('openai/gpt-oss-120b');
-  await control(page, 'save-connection').click();
+  await openPane(page, 'genre');
+  await control(page, 'choice-level-5').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
+  await openPane(page, 'writing');
+  await control(page, 'theme').fill('TEMA_PRIVADO_SOMENTE_NA_MEMORIA');
+  await control(page, 'instructions').fill('INSTRUCOES_PRIVADAS_SOMENTE_NA_MEMORIA');
+  await control(page, 'save-writing').click();
   await configure(page, 'CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA');
   await generateAndWait(page);
   const stored = await page.evaluate(() => JSON.stringify({
     local: { ...localStorage }, session: { ...sessionStorage }, cookie: document.cookie,
   }));
-  assert.doesNotMatch(stored, /openai\/gpt-oss-120b|CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
+  assert.doesNotMatch(stored, /TEMA_PRIVADO_SOMENTE_NA_MEMORIA|INSTRUCOES_PRIVADAS_SOMENTE_NA_MEMORIA|CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
+  assert.deepEqual(await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage }, cookie: document.cookie })),
+    { local: {}, session: {}, cookie: '' });
   await control(page, 'close').click();
   await page.addScriptTag({ content: script });
   assert.doesNotMatch(await control(page, 'context').inputValue(), /CONTEUDO_PRIVADO_SOMENTE_NA_MEMORIA/);
-  assert.equal(await control(page, 'model').inputValue(), 'openai/gpt-oss-20b');
+  assert.equal(await control(page, 'level').inputValue(), '3');
+  assert.equal(await control(page, 'theme').inputValue(), '');
+  assert.equal(await control(page, 'instructions').inputValue(), '');
 });
 
 test('does not call the public backend without usable reference text', async t => {
@@ -427,13 +436,18 @@ test('starts with a compact dark hub in the bottom-right corner and no secondary
   const channels = background.match(/[\d.]+/g).slice(0, 3).map(Number);
   assert.ok(channels.every(channel => channel <= 45), `hub background is ${background}`);
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
-  assert.match(await control(page, 'summary-connection').textContent(), /GPT-OSS.*20B/i);
+  assert.equal(await control(page, 'open-genre').locator('.setting-label').textContent(), 'Tipo');
+  assert.match(await control(page, 'summary-genre').textContent(), /3/);
+  assert.equal(await control(page, 'level').inputValue(), '3');
+  for (const id of ['model', 'genre', 'open-connection', 'pane-connection', 'save-connection']) {
+    assert.equal(await control(page, id).count(), 0, `${id} must not be part of the hub`);
+  }
   assert.equal(await control(page, 'api-key').count(), 0);
   assert.equal(await page.locator('#redator-groq-console >> input[type="password"]').count(), 0);
   assert.doesNotMatch(script, /PERSONAL_ACCESS_TOKEN|HUB_ACCESS_TOKEN/);
 });
 
-test('genre and word choices open opposite the hub, close immediately, and affect summaries and generation', async t => {
+test('level and word choices open opposite the hub, close after selection, and affect summaries and generation', async t => {
   let payload;
   const page = await mount(t, route => {
     payload = route.request().postDataJSON();
@@ -444,26 +458,32 @@ test('genre and word choices open opposite the hub, close immediately, and affec
   const secondary = await control(page, 'secondary-panel').boundingBox();
   const main = await control(page, 'main-panel').boundingBox();
   assert.ok(secondary.x + secondary.width <= main.x, 'secondary card should be left of the main hub');
-  await control(page, 'choice-genre-enem').click();
+  assert.equal(await control(page, 'pane-genre').locator('[data-choice="level"]').count(), 5);
+  await control(page, 'choice-level-4').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
-  assert.match(await control(page, 'summary-genre').textContent(), /ENEM/i);
-  assert.equal(await control(page, 'genre').inputValue(), 'enem');
+  assert.match(await control(page, 'summary-genre').textContent(), /4/);
+  assert.equal(await control(page, 'level').inputValue(), '4');
   assert.equal(await page.evaluate(() => document.querySelector('#redator-groq-console').shadowRoot.activeElement?.id), 'open-genre');
   await openPane(page, 'words');
   await control(page, 'choice-words-500').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
   assert.match(await control(page, 'summary-words').textContent(), /500/);
   assert.equal(await control(page, 'words').inputValue(), '500');
   await generateAndWait(page);
-  assert.equal(payload.genre, 'enem');
-  assert.equal(Number(payload.words), 500);
+  assert.equal(payload.level, 4);
+  assert.equal(payload.words, 500);
+  assert.equal(payload.genre, undefined);
+  assert.equal(payload.model, undefined);
 });
 
 test('switching functions keeps exactly one secondary pane visible', async t => {
   const page = await mount(t);
-  await openPane(page, 'connection');
+  await openPane(page, 'writing');
   await openPane(page, 'source');
-  assert.equal(await control(page, 'pane-connection').isVisible(), false);
+  await control(page, 'pane-writing').waitFor({ state: 'hidden' });
+  assert.equal(await control(page, 'pane-writing').isVisible(), false);
   assert.equal(await control(page, 'pane-source').isVisible(), true);
   assert.equal(await page.locator('#redator-groq-console >> [id^="pane-"]:visible').count(), 1);
   assert.equal(await page.locator('#redator-groq-console >> #secondary-panel:visible').count(), 1);
@@ -471,11 +491,11 @@ test('switching functions keeps exactly one secondary pane visible', async t => 
 
 test('Escape closes the secondary pane and restores focus to the triggering hub button', async t => {
   const page = await mount(t);
-  await openPane(page, 'connection');
-  await control(page, 'model').focus();
+  await openPane(page, 'writing');
+  await control(page, 'theme').focus();
   await page.keyboard.press('Escape');
   await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
-  assert.equal(await page.evaluate(() => document.querySelector('#redator-groq-console').shadowRoot.activeElement?.id), 'open-connection');
+  assert.equal(await page.evaluate(() => document.querySelector('#redator-groq-console').shadowRoot.activeElement?.id), 'open-writing');
   assert.equal(await control(page, 'main-panel').isVisible(), true);
 });
 
@@ -491,17 +511,21 @@ test('saving edited configuration closes its card and updates the hub summaries'
   const page = await mount(t);
   await configure(page, 'Referência revisada pelo usuário para uma nova redação.');
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
-  await openPane(page, 'connection');
-  assert.match(await control(page, 'secondary-description').textContent(), /público|sem login|sem código/i);
-  await control(page, 'model').fill('openai/gpt-oss-120b');
-  await control(page, 'save-connection').click();
-  assert.match(await control(page, 'summary-connection').textContent(), /GPT-OSS.*120B/i);
+  await openPane(page, 'genre');
+  await control(page, 'choice-level-5').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
+  assert.match(await control(page, 'summary-genre').textContent(), /5/);
   assert.match(await control(page, 'summary-source').textContent(), /\d/);
   await openPane(page, 'writing');
   await control(page, 'theme').fill('Leitura e cidadania');
+  await control(page, 'instructions').fill('Discuta como bibliotecas ampliam o acesso à leitura.');
   await control(page, 'save-writing').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
   assert.match(await control(page, 'summary-writing').textContent(), /Leitura e cidadania/);
+  await openPane(page, 'writing');
+  assert.equal(await control(page, 'theme').inputValue(), 'Leitura e cidadania');
+  assert.equal(await control(page, 'instructions').inputValue(), 'Discuta como bibliotecas ampliam o acesso à leitura.');
 });
 
 for (const width of [390, 320]) {
@@ -510,7 +534,7 @@ for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     const main = await control(page, 'main-panel').boundingBox();
     assert.ok(main.x >= -1 && main.x + main.width <= width + 1);
-    for (const pane of ['connection', 'source', 'genre', 'words', 'writing', 'result']) {
+    for (const pane of ['source', 'genre', 'words', 'writing', 'result']) {
       await openPane(page, pane);
       const bounds = await control(page, 'secondary-panel').boundingBox();
       assert.ok(bounds.x >= -1 && bounds.x + bounds.width <= width + 1, `${pane} overflows ${width}px viewport`);
@@ -524,9 +548,9 @@ for (const width of [390, 320]) {
 test('mobile reinjection restores the hub from an open secondary pane and preserves the current draft', async t => {
   const page = await mount(t);
   await page.setViewportSize({ width: 390, height: 844 });
-  await openPane(page, 'connection');
-  await control(page, 'model').fill('openai/gpt-oss-120b');
-  await control(page, 'save-connection').click();
+  await openPane(page, 'genre');
+  await control(page, 'choice-level-5').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   await configure(page);
   await openPane(page, 'source');
   const draft = 'Rascunho em revisão, ainda sem confirmar o texto de referência.';
@@ -537,7 +561,7 @@ test('mobile reinjection restores the hub from an open secondary pane and preser
   assert.equal(await control(page, 'main-panel').isVisible(), true);
   assert.equal(await control(page, 'secondary-panel').isVisible(), false);
   assert.equal(await control(page, 'context').inputValue(), draft);
-  assert.equal(await control(page, 'model').inputValue(), 'openai/gpt-oss-120b');
+  assert.equal(await control(page, 'level').inputValue(), '5');
 });
 
 test('upgrading an old panel calls its cleanup once and replaces it with one current hub', async t => {

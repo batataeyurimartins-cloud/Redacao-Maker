@@ -68,7 +68,7 @@ async function json(route, status, payload) {
 }
 
 async function fixture(t, options = {}) {
-  const context = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  const context = await browser.newContext({ viewport: { width: 1400, height: 1000 }, reducedMotion: 'reduce' });
   context.setDefaultTimeout(5000);
   context.setDefaultNavigationTimeout(5000);
   const requests = [];
@@ -105,6 +105,7 @@ async function fixture(t, options = {}) {
   await control(page, 'open-source').click();
   await control(page, 'context').fill('Bibliotecas públicas oferecem acesso gratuito à internet e formação digital.');
   await control(page, 'save-source').click();
+  await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
   return { page, requests };
 }
 
@@ -116,7 +117,10 @@ async function ready(page) {
 }
 
 async function generate(page) {
-  if (await control(page, 'secondary-panel').isVisible()) await control(page, 'secondary-close').click();
+  if (await control(page, 'secondary-panel').isVisible()) {
+    await control(page, 'secondary-close').click();
+    await control(page, 'secondary-panel').waitFor({ state: 'hidden' });
+  }
   const response = page.waitForResponse(API_URL, { timeout: 5000 });
   await control(page, 'generate').click();
   await response;
@@ -143,7 +147,9 @@ test('fills distinct labeled title and essay fields without submitting or clicki
   assert.deepEqual(await hostDraft(page), { title: TITLE, essay: ESSAY });
   await assertResult(page);
   assert.equal(requests.length, 1);
-  assert.deepEqual(Object.keys(requests[0]).sort(), ['context', 'genre', 'instructions', 'model', 'theme', 'words']);
+  assert.deepEqual(Object.keys(requests[0]).sort(), ['context', 'instructions', 'level', 'theme', 'words']);
+  assert.equal(requests[0].level, 3);
+  assert.equal(requests[0].words, 350);
   assert.deepEqual(await page.evaluate(() => ({ submits: window.hostSubmits, clicks: window.hostClicks })), { submits: 0, clicks: 0 });
   assert.equal(await control(page, 'fill-page').isVisible(), true);
 });
