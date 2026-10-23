@@ -1,4 +1,4 @@
-# Batata · hub compacto por bookmarklet
+# Redator Batata · hub compacto por bookmarklet
 
 Hub preto de 284 px para gerar redações a partir do texto de uma página. O painel principal fica no canto inferior direito; as opções abrem no canto oposto e fecham quando você escolhe. Em telas pequenas, o principal reaparece ao concluir a escolha.
 
@@ -6,12 +6,12 @@ Repositório: https://github.com/batataeyurimartins-cloud/Redacao-Maker
 
 Publicação: https://redacao-maker.vercel.app · Script: https://redacao-maker.vercel.app/hub.js
 
-O Batata usa um backend na Vercel: o navegador envia a referência para `/api/generate`, e o servidor solicita a geração ao provedor de IA. A chave permanece no servidor.
+O Redator Batata usa um backend na Vercel: o navegador envia a referência para `/api/generate`, e o servidor solicita a geração ao provedor de IA. A chave permanece no servidor.
 
 ## Como usar
 
 1. Acesse https://redacao-maker.vercel.app e mostre a barra de favoritos do navegador (`Ctrl+Shift+B` no Chrome/Edge ou `⌘⇧B` no Mac).
-2. Arraste o botão **★ Batata** para a barra de favoritos. Abra a página cujo texto deseja usar e clique nesse favorito.
+2. Arraste o botão **★ Redator Batata** para a barra de favoritos. Abra a página cujo texto deseja usar e clique nesse favorito.
 3. Em **Referência**, revise o texto capturado e clique em **Usar este texto**. Você pode editar manualmente, reler a página ou usar uma seleção.
 4. Em **Tipo**, escolha o nível de escrita: **1 — Bem simples**, **2 — Fraco**, **3 — Médio** (padrão), **4 — Bom** ou **5 — Máximo**. Em **Extensão**, escolha o tamanho. O painel auxiliar fecha e atualiza o resumo no hub. Em **Tema**, defina instruções se quiser.
 5. Clique em **Gerar redação**. O hub gera o título e o texto separadamente e preenche os campos correspondentes da página quando consegue identificá-los. Se os campos ainda não estiverem disponíveis, continua procurando enquanto o hub estiver aberto e preenche quando encontrar os dois. O resultado também abre no painel auxiliar para revisão, cópia e download.
@@ -28,7 +28,7 @@ Na Sala do Futuro, o formulário contém um controle interno chamado `hidden`. E
 
 O hub é público, sem login, senha ou código de acesso. Você pode compartilhar o link de instalação e o script. A chave do provedor de IA permanece no servidor e não é solicitada aos visitantes.
 
-Para instalar manualmente, clique em **Copiar bookmarklet**, crie um favorito chamado **Batata** e cole o código no campo **URL/Endereço** do favorito, incluindo o prefixo `javascript:`. O botão **Baixar favorito** oferece um arquivo HTML para importar pelo gerenciador de favoritos do navegador.
+Para instalar manualmente, clique em **Copiar bookmarklet**, crie um favorito chamado **Redator Batata** e cole o código no campo **URL/Endereço** do favorito, incluindo o prefixo `javascript:`. O botão **Baixar favorito** oferece um arquivo HTML para importar pelo gerenciador de favoritos do navegador.
 
 Algumas páginas bloqueiam o carregamento externo do bookmarklet; páginas internas do navegador e visualizadores de PDF também podem impedir sua execução. Em **Outras formas de abrir o hub**, você encontra **Copiar script completo** para colar o código no Console. Não desative a segurança do navegador.
 

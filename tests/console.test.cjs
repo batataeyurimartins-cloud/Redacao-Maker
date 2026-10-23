@@ -425,6 +425,9 @@ test('a hidden fallback body does not expose direct text nodes', async t => {
 test('starts with a compact dark hub in the bottom-right corner and no secondary card', async t => {
   const page = await mount(t);
   const card = control(page, 'main-panel');
+  assert.equal(await card.getAttribute('aria-label'), 'Redator Batata');
+  assert.equal(await card.locator('h2').textContent(), 'Redator');
+  assert.equal(await card.locator('.brand .badge').first().textContent(), 'BATATA');
   const bounds = await card.boundingBox();
   const viewport = page.viewportSize();
   assert.ok(bounds.width <= 300, `hub width is ${bounds.width}px`);
@@ -564,7 +567,7 @@ test('mobile reinjection restores the hub from an open secondary pane and preser
   assert.equal(await control(page, 'level').inputValue(), '5');
 });
 
-test('upgrading a legacy provider panel calls its cleanup once and replaces it with one Batata hub', async t => {
+test('upgrading a legacy provider panel calls its cleanup once and replaces it with one Redator Batata hub', async t => {
   const page = await mount(t);
   await control(page, 'close').click();
   await page.evaluate(() => {
@@ -587,7 +590,7 @@ test('upgrading a legacy provider panel calls its cleanup once and replaces it w
   assert.equal(await page.evaluate(() => window.oldPanelForTest.isConnected), false);
   assert.equal(await page.locator('#redator-batata-console').count(), 1);
   assert.equal(await control(page, 'main-panel').isVisible(), true);
-  assert.equal(await page.locator('#redator-batata-console').getAttribute('data-redator-version'), '1.10.0');
+  assert.equal(await page.locator('#redator-batata-console').getAttribute('data-redator-version'), '1.10.1');
   assert.equal(await page.locator('#redator-groq-console').count(), 0);
   await page.addScriptTag({ content: script });
   assert.equal(await page.evaluate(() => window.oldPanelCloseCalls), 1);

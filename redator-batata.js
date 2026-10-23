@@ -3,7 +3,7 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-batata-console';
-  const VERSION = '1.10.0';
+  const VERSION = '1.10.1';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
@@ -37,7 +37,7 @@
     return;
   }
   if (!document.body || !document.documentElement || !window.AbortController) {
-    console.warn('Batata: abra uma página HTML em um navegador atualizado.');
+    console.warn('Redator Batata: abra uma página HTML em um navegador atualizado.');
     return;
   }
 
@@ -259,8 +259,8 @@
     element('div', { className:'settings' }, [setting('source','Referência'),setting('genre','Tipo'),setting('words','Extensão'),setting('writing','Tema'),setting('result','Redação')]),
     element('div', { className:'generate-row' }, [generate,cancel]),status,retryConnection,connectionHelp
   ]);
-  const main = element('section', { id:'main-panel', className:'card main', role:'region', 'aria-label':'Batata', 'data-secondary-open':'false' }, [
-    element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Batata'),element('span',{ className:'badge' },'HUB'),element('span',{ id:'version', className:'badge', title:'Versão do hub' },`v${VERSION}`)]),minimize,close]),body
+  const main = element('section', { id:'main-panel', className:'card main', role:'region', 'aria-label':'Redator Batata', 'data-secondary-open':'false' }, [
+    element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Redator'),element('span',{ className:'badge' },'BATATA'),element('span',{ id:'version', className:'badge', title:'Versão do hub' },`v${VERSION}`)]),minimize,close]),body
   ]);
   const saveSource = element('button', { id:'save-source', type:'button', className:'primary full' }, 'Usar este texto');
   const saveWriting = element('button', { id:'save-writing', type:'button', className:'primary full' }, 'Usar estas instruções');
@@ -1214,9 +1214,9 @@
       413:'O texto excedeu o limite do serviço. Reduza o texto de referência.',
       429:'Limite de uso atingido. Aguarde antes de tentar novamente.',
       503:'A geração ainda não foi configurada no servidor.',
-      504:'O Batata demorou para responder. Tente novamente em instantes.'
+      504:'O Redator Batata demorou para responder. Tente novamente em instantes.'
     };
-    let message = messages[response.status] || (response.status >= 500 ? 'O Batata está indisponível no momento. Tente novamente em instantes.' : 'Não foi possível concluir a solicitação ao Batata.');
+    let message = messages[response.status] || (response.status >= 500 ? 'O Redator Batata está indisponível no momento. Tente novamente em instantes.' : 'Não foi possível concluir a solicitação ao Redator Batata.');
     const retry = response.headers.get('retry-after');
     if (response.status === 429 && retry && /^\d+(\.\d+)?$/.test(retry)) message += ` Aguarde cerca de ${Math.ceil(Number(retry))} segundos.`;
     if ([400,404,502,503].includes(response.status) && typeof payload?.error?.message === 'string') {
@@ -1480,7 +1480,7 @@
     retryConnection.hidden = true;
     connectionHelp.hidden = true;
     connectionBlockedByPolicy = false;
-    setStatus('Gerando a redação com o Batata… Você pode cancelar a solicitação.');
+    setStatus('Gerando a redação com o Redator Batata… Você pode cancelar a solicitação.');
     try {
       const input = createRequest();
       const response = useConnectionWindow ? await fetchInConnectionWindow(input,request.controller.signal) : await fetch(API_URL, {
@@ -1496,7 +1496,7 @@
       catch {
         if (request.controller.signal.aborted) throw new Error('aborted');
         if (!response.ok) throw httpError(response,null);
-        throw new Error('O Batata devolveu uma resposta inválida. Tente novamente.');
+        throw new Error('O Redator Batata devolveu uma resposta inválida. Tente novamente.');
       }
       if (!response.ok) throw httpError(response,payload);
       if (request.controller.signal.aborted || closed) return;
@@ -1528,7 +1528,7 @@
     } catch (error) {
       if (closed) return;
       if (request.controller.signal.aborted) {
-        setStatus(request.reason === 'timeout' ? 'O Batata demorou mais de 90 segundos. A solicitação foi interrompida; tente novamente.' : 'Geração cancelada. Você pode tentar novamente.','warning');
+        setStatus(request.reason === 'timeout' ? 'O Redator Batata demorou mais de 90 segundos. A solicitação foi interrompida; tente novamente.' : 'Geração cancelada. Você pode tentar novamente.','warning');
         generatedNotice?.();
         hubMotion.toast({id:'generation-error',title:request.reason === 'timeout' ? 'Tempo de espera esgotado' : 'Geração cancelada',message:'Você pode tentar novamente quando quiser.',kind:'warning'});
       } else if (error instanceof TypeError) {

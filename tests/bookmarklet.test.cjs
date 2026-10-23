@@ -133,6 +133,10 @@ async function activateBookmarklet(page, href) {
 
 test('offers a public JavaScript bookmark with bookmark-bar installation as the primary flow', async t => {
   const { page, backendRequests } = await mount(t);
+  assert.equal(await page.title(), 'Redator Batata · bookmarklet');
+  assert.equal(await page.locator('header .brand').textContent(), 'Redator');
+  assert.equal(await page.locator('header .badge').textContent(), 'BATATA');
+  assert.equal(await page.locator('#bookmarklet').textContent(), '★ Redator Batata');
   const href = await page.locator('#bookmarklet').getAttribute('href');
   assertPublicBookmarklet(href);
   const steps = await page.locator('main ol').first().innerText();
@@ -220,8 +224,11 @@ test('publishes matching text and Netscape import artifacts whose bookmark actua
   assert.match(bookmarkImport, /<DL\b/i);
   assert.match(bookmarkImport, /<DT>\s*<A\b/i);
   await page.goto(`${PUBLIC_ORIGIN}/favorito-batata.html`);
+  assert.equal(await page.title(), 'Redator Batata');
+  assert.equal(await page.locator('h1').textContent(), 'Redator Batata');
   const imported = page.locator('a[href^="javascript:"]');
   assert.equal(await imported.count(), 1);
+  assert.equal(await imported.textContent(), 'Redator Batata');
   const importedHref = await imported.getAttribute('href');
   assert.equal(importedHref, href, 'HTML attribute escaping must preserve the complete JavaScript URL');
   await page.goto(ARTICLE_URL);

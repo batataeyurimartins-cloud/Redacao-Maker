@@ -7,7 +7,7 @@ const projectRoot = path.resolve(__dirname, '..');
 const publicDirectory = path.join(projectRoot, 'public');
 const sourcePath = path.join(projectRoot, 'redator-batata.js');
 const publicScriptNames = ['redator-batata.js', 'hub.js'];
-// Preserve direct downloads saved before the Batata rename.
+// Preserve direct downloads saved before the provider label changed.
 const legacyScriptNames = ['redator-groq.js'];
 const fallbackOrigin = 'https://redacao-maker.vercel.app';
 const serviceOriginDeclaration = /const SERVICE_ORIGIN\s*=\s*(['"])([^'"\r\n]*)\1\s*;/;
@@ -43,10 +43,10 @@ const bookmarkletBody = `(()=>{const s=document.createElement('script');s.src=${
 const bookmarklet = `javascript:${encodeURIComponent(bookmarkletBody)}`;
 const bookmarkImportHtml = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
-<TITLE>Batata</TITLE>
-<H1>Batata</H1>
+<TITLE>Redator Batata</TITLE>
+<H1>Redator Batata</H1>
 <DL><p>
-    <DT><A HREF="${escapeHtmlAttribute(bookmarklet)}">Batata</A>
+    <DT><A HREF="${escapeHtmlAttribute(bookmarklet)}">Redator Batata</A>
 </DL><p>
 `;
 

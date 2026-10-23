@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Salve o bookmarklet Batata nos favoritos e abra o hub na página com um clique.">
-  <title>Batata · bookmarklet</title>
+  <meta name="description" content="Salve o bookmarklet Redator Batata nos favoritos e abra o hub na página com um clique.">
+  <title>Redator Batata · bookmarklet</title>
   <style>
     :root { color-scheme:dark; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#0b0b0e; color:#efeff3; }
     * { box-sizing:border-box; }
@@ -59,19 +59,19 @@
 </head>
 <body>
   <main>
-    <header><span class="logo" aria-hidden="true">B</span><span class="brand">Batata</span><span class="badge">HUB</span></header>
+    <header><span class="logo" aria-hidden="true">RB</span><span class="brand">Redator</span><span class="badge">BATATA</span></header>
     <section class="card" aria-labelledby="install-title">
       <h1 id="install-title">Seu hub, em um favorito.</h1>
       <p>Salve uma vez e abra o hub na página com um clique. Público, sem login ou código de acesso.</p>
       <ol>
         <li><span>Mostre a <strong>barra de favoritos</strong> do navegador: Ctrl+Shift+B no Chrome ou Edge; no Mac, ⌘⇧B.</span></li>
-        <li><span>Arraste o botão <strong>★ Batata</strong> abaixo para essa barra.</span></li>
-        <li><span>Abra a página que quer ler e clique no favorito <strong>Batata</strong>. Confira a referência e gere a redação: o hub preenche o título e o texto nos campos identificados para você revisar.</span></li>
+        <li><span>Arraste o botão <strong>★ Redator Batata</strong> abaixo para essa barra.</span></li>
+        <li><span>Abra a página que quer ler e clique no favorito <strong>Redator Batata</strong>. Confira a referência e gere a redação: o hub preenche o título e o texto nos campos identificados para você revisar.</span></li>
       </ol>
-      <a id="bookmarklet" class="bookmarklet" href="#" draggable="true" title="Arraste para a barra de favoritos">★ Batata</a>
+      <a id="bookmarklet" class="bookmarklet" href="#" draggable="true" title="Arraste para a barra de favoritos">★ Redator Batata</a>
       <p class="bookmarklet-help">Arraste para instalar. Depois, clique no favorito quando estiver na página do assunto.</p>
       <div class="actions"><button id="copy-bookmarklet" type="button">Copiar bookmarklet</button><a class="download" href="/favorito-batata.html" download="favorito-batata.html">Baixar favorito</a></div>
-      <p class="hint">Para instalar manualmente, copie o bookmarklet, crie um favorito chamado <strong>Batata</strong> e cole o código no campo <strong>URL</strong> ou <strong>Endereço</strong> do favorito.</p>
+      <p class="hint">Para instalar manualmente, copie o bookmarklet, crie um favorito chamado <strong>Redator Batata</strong> e cole o código no campo <strong>URL</strong> ou <strong>Endereço</strong> do favorito.</p>
       <p class="hint">Se a página bloquear a conexão, o hub oferece <strong>Gerar em janela auxiliar</strong>. Se ele nem abrir, <a href="/connection.html" target="_blank" rel="noopener noreferrer">abra o hub em outra janela</a> e cole a referência.</p>
       <details id="console-options">
         <summary>Outras formas de abrir o hub</summary>
@@ -86,7 +86,7 @@
     </section>
     <footer>
       <div class="health" id="health-status" role="status">Verificando a configuração do servidor…</div>
-      <p>Use o Batata sem informar credenciais no hub. <a href="/api/health">Estado do serviço</a></p>
+      <p>Use o Redator Batata sem informar credenciais no hub. <a href="/api/health">Estado do serviço</a></p>
     </footer>
   </main>
   <script>
@@ -132,7 +132,7 @@
       bookmarkletButton.addEventListener('click',async () => {
         bookmarkletButton.disabled = true;
         try {
-          await copyText(bookmarklet,'Bookmarklet copiado. Cole no campo URL ou Endereço de um favorito chamado Batata.','Bookmarklet para colar no campo URL do favorito','Use Ctrl+C ou ⌘C no texto selecionado e cole no campo URL ou Endereço de um favorito, incluindo javascript:.');
+          await copyText(bookmarklet,'Bookmarklet copiado. Cole no campo URL ou Endereço de um favorito chamado Redator Batata.','Bookmarklet para colar no campo URL do favorito','Use Ctrl+C ou ⌘C no texto selecionado e cole no campo URL ou Endereço de um favorito, incluindo javascript:.');
         } finally {
           bookmarkletButton.disabled = false;
         }
@@ -172,7 +172,7 @@
         .then(data => {
           if (data?.service !== 'batata' || typeof data.configured !== 'boolean' || data.publicAccess !== true) throw new Error('unexpected health');
           health.dataset.state = data.configured ? 'ready' : 'pending';
-          health.textContent = data.configured ? 'Batata disponível. Acesso público, sem login.' : 'A geração do Batata está temporariamente indisponível. Tente novamente mais tarde.';
+          health.textContent = data.configured ? 'Redator Batata disponível. Acesso público, sem login.' : 'A geração do Redator Batata está temporariamente indisponível. Tente novamente mais tarde.';
         })
         .catch(() => {
           health.dataset.state = 'pending';

@@ -341,6 +341,8 @@ test('a standalone connection page opens its own hub only after the manual actio
   const { context, hubLoads, requests } = await fixture(t, { hub:false });
   const standalone = await context.newPage();
   await standalone.goto(`${SERVICE_ORIGIN}/connection.html`);
+  assert.equal(await standalone.title(), 'Conexão auxiliar · Redator Batata');
+  assert.equal(await standalone.locator('h1').textContent(), 'Redator Batata');
   assert.match(await standalone.locator('#connection-status').textContent(), /cole|referência/i);
   assert.equal(await standalone.locator('#redator-batata-console').count(), 0);
   assert.equal(hubLoads.length, 0);
