@@ -3,7 +3,7 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.7.0';
+  const VERSION = '1.8.0';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
@@ -244,7 +244,7 @@
     element('div', { className:'generate-row' }, [generate,cancel]),status,retryConnection,connectionHelp
   ]);
   const main = element('section', { id:'main-panel', className:'card main', role:'region', 'aria-label':'Redator Groq', 'data-secondary-open':'false' }, [
-    element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Redator'),element('span',{ className:'badge' },'GROQ')]),minimize,close]),body
+    element('header', { className:'hub-header' }, [element('span',{ className:'brand-icon' },icon('brand')),element('div',{ className:'brand' },[element('h2',{},'Redator'),element('span',{ className:'badge' },'GROQ'),element('span',{ id:'version', className:'badge', title:'Versão do hub' },`v${VERSION}`)]),minimize,close]),body
   ]);
   const saveSource = element('button', { id:'save-source', type:'button', className:'primary full' }, 'Usar este texto');
   const saveWriting = element('button', { id:'save-writing', type:'button', className:'primary full' }, 'Usar estas instruções');
@@ -471,13 +471,6 @@
     const essayCue = /\b(redacao|essay|composition|desenvolvimento)\b|\b(seu|sua|your) (texto|redacao|text|essay)\b|\b(corpo do texto|texto da resposta|escreva (aqui|seu texto)|digite seu texto)\b/;
     const unrelated = /\b(referencia|reference|apoio|proposta|enunciado|prompt|contexto|context|instrucao|instrucoes|motivador|motivadores|pesquisa|pesquisar|search|busca|email|e mail|senha|password|usuario|username|login|telefone|phone|comentario|comment|mensagem|message|chat|feedback|observacao|tema|theme|subject)\b|\bnome completo\b/;
     const referenceHeading = /\b(texto de apoio|textos de apoio|proposta|enunciado|referencia|instrucoes|prompt|contexto)\b/;
-    function salaActivity(node = document) {
-      try {
-        const doc = node.nodeType === 9 ? node : node.ownerDocument || document;
-        const current = doc.location?.hostname ? doc.location : location;
-        return current.hostname === 'saladofuturo.educacao.sp.gov.br' && /^\/atividade(?:\/|$)/.test(current.pathname);
-      } catch (_) { return false; }
-    }
     const muiTextarea = node => node?.tagName === 'TEXTAREA' && node.classList.contains('MuiInputBase-input') && node.classList.contains('MuiInputBase-inputMultiline');
     const parentOf = node => node?.parentElement || node?.getRootNode?.()?.host || null;
     function notify(result) { try { onStatus?.(result); } catch (_) {} }
@@ -501,10 +494,10 @@
           if (!context.getClientRects().length || excluded(context)) return false;
           for (let current = context; current; current = parentOf(current)) {
             const hiddenFromAccess = current.getAttribute?.('aria-hidden') === 'true';
-            // Algumas telas da Sala mantêm aria-hidden em contêineres ainda visíveis.
+            // aria-hidden em um contêiner não torna uma caixa visível não editável.
             // A própria textarea e os espelhos de medição continuam excluídos.
-            const staleSalaAncestor = salaActivity(node) && muiTextarea(node) && current !== node;
-            if (current.hidden || current.inert || (hiddenFromAccess && !staleSalaAncestor) ||
+            const staleMuiAncestor = context === node && muiTextarea(node) && current !== node;
+            if (current.hidden || current.inert || (hiddenFromAccess && !staleMuiAncestor) ||
                 current.getAttribute?.('aria-disabled') === 'true' || current.getAttribute?.('aria-readonly') === 'true') return false;
             const style = current.ownerDocument.defaultView.getComputedStyle(current);
             if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
@@ -581,8 +574,8 @@
       if (!node || node.matches?.('input,textarea,[contenteditable],script,style')) return '';
       const text = labelText(node);
       const cue = normalize(text);
-      if (text.length > 100 || unrelated.test(cue)) return '';
-      return titleCue.test(cue) || essayCue.test(cue) ? text : '';
+      if (text.length > 100) return '';
+      return titleCue.test(cue) || essayCue.test(cue) || unrelated.test(cue) ? text : '';
     }
 
     function describe(element) {
@@ -623,19 +616,17 @@
       };
     }
 
-    function salaEditorPair(descriptions) {
-      const fields = descriptions.filter(item => salaActivity(item.element) && muiTextarea(item.element));
+    function muiEditorPair(descriptions) {
+      const fields = descriptions.filter(item => muiTextarea(item.element));
       if (fields.length > 2) return { pair:null, ambiguous:true };
-      if (fields.length !== 2 || fields[0].element.ownerDocument !== fields[1].element.ownerDocument) return { pair:null, ambiguous:false };
+      if (fields.length !== 2 || fields[0].element.ownerDocument !== fields[1].element.ownerDocument ||
+          fields[0].element.getRootNode() !== fields[1].element.getRootNode()) return { pair:null, ambiguous:false };
       const [first,second] = fields.map(item => item.element);
       let common = first.parentElement;
-      let distance = 0;
-      while (common && !common.contains(second) && distance++ < 6) common = common.parentElement;
+      while (common && !common.contains(second)) common = common.parentElement;
       if (!common || !common.contains(second) || common.matches('html,body,main,[role="main"],#root,#__next')) return { pair:null, ambiguous:false };
-      let secondDistance = 0;
-      for (let node = second; node && node !== common; node = node.parentElement) secondDistance++;
-      if (secondDistance > 6) return { pair:null, ambiguous:false };
       if (first.form !== second.form && (first.form || second.form)) return { pair:null, ambiguous:false };
+      if (descriptions.some(item => common.contains(item.element) && !fields.includes(item))) return { pair:null, ambiguous:true };
       return { pair:fields, ambiguous:false };
     }
 
@@ -644,21 +635,23 @@
       for (const kind of ['title', 'essay']) if (pinned[kind] && !editable(pinned[kind], kind)) pinned[kind] = null;
       const descriptions = (snapshot || collect()).fields.map(describe).filter(item => !unrelated.test(item.direct) &&
         (!referenceHeading.test(item.heading) || item.titleScore >= 120 || item.essayScore >= 120 ||
-          (salaActivity(item.element) && muiTextarea(item.element) && /\bproposta\b/.test(item.heading) && !/\b(apoio|referencia|contexto|instrucoes|enunciado|prompt)\b/.test(item.heading))));
+          (muiTextarea(item.element) && /\bproposta\b/.test(item.heading) && !/\b(apoio|referencia|contexto|instrucoes|enunciado|prompt)\b/.test(item.heading))));
       let titles = descriptions.filter(item => item.titleScore && item.element !== pinned.essay && editable(item.element, 'title'));
       let essays = descriptions.filter(item => item.essayScore && !item.titleScore && item.element !== pinned.title && editable(item.element, 'essay'));
-      const sala = salaEditorPair(descriptions);
-      if (sala.pair && [...titles,...essays].some(item => !sala.pair.some(candidate => candidate.element === item.element))) sala.ambiguous = true;
-      if (sala.pair && !sala.ambiguous) {
-        const [first,second] = sala.pair;
+      const editor = muiEditorPair(descriptions);
+      // Explicit title/body labels take precedence over unrelated extra controls.
+      if (!editor.pair && titles.length === 1 && essays.length === 1) editor.ambiguous = false;
+      if (editor.pair && [...titles,...essays].some(item => !editor.pair.some(candidate => candidate.element === item.element))) editor.ambiguous = true;
+      if (editor.pair && !editor.ambiguous) {
+        const [first,second] = editor.pair;
         if (!titles.length && !essays.length) {
           if (!pinned.title && first.element !== pinned.essay) titles = [{...first,titleScore:85}];
           if (!pinned.essay && second.element !== pinned.title) essays = [{...second,essayScore:85}];
         } else if (!essays.length && titles.length === 1) {
-          const other = sala.pair.find(item => item.element !== titles[0].element && item.element !== pinned.title);
+          const other = editor.pair.find(item => item.element !== titles[0].element && item.element !== pinned.title);
           if (other) essays = [{...other,essayScore:85}];
         } else if (!titles.length && essays.length === 1) {
-          const other = sala.pair.find(item => item.element !== essays[0].element && item.element !== pinned.essay);
+          const other = editor.pair.find(item => item.element !== essays[0].element && item.element !== pinned.essay);
           if (other) titles = [{...other,titleScore:85}];
         }
       }
@@ -676,7 +669,7 @@
       };
       const title = pinned.title || (titles.length === 1 ? titles[0].element : null);
       const essay = pinned.essay || (essays.length === 1 ? essays[0].element : null);
-      const ambiguous = { title: !pinned.title && (titles.length > 1 || sala.ambiguous), essay: !pinned.essay && (essays.length > 1 || sala.ambiguous) };
+      const ambiguous = { title: !pinned.title && (titles.length > 1 || editor.ambiguous), essay: !pinned.essay && (essays.length > 1 || editor.ambiguous) };
       const status = ambiguous.title || ambiguous.essay ? 'ambiguous' : title && essay ? 'ready' : title || essay ? 'partial' : 'not-found';
       const message = status === 'ready' ? 'Título e redação encontrados na página.' : status === 'ambiguous'
         ? 'Há mais de um campo possível. Escolha o campo na página.' : status === 'partial'
