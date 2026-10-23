@@ -3,7 +3,7 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.8.0';
+  const VERSION = '1.9.0';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
@@ -160,6 +160,13 @@
     .check { display:grid; place-items:center; width:19px; height:19px; border:1px solid #ffffff28; border-radius:50%; color:transparent; font-size:10px; }
     .choice[aria-pressed=true] { background:#24242c; border-color:#ffffff65; }
     .choice[aria-pressed=true] .check { background:#ededf1; border-color:#ededf1; color:#111; }
+    #field-inspector { margin-top:12px; padding-top:12px; border-top:1px solid #ffffff18; }
+    #field-inspector-summary { font-size:10px; color:#b6b6c2; overflow-wrap:anywhere; }
+    .field-option { margin:8px 0; padding:9px; border:1px solid #ffffff20; border-radius:8px; background:#19191e; }
+    .field-option strong,.field-option small { display:block; overflow-wrap:anywhere; }
+    .field-option .row { margin-top:7px; }
+    .field-option button { padding:6px 8px; font-size:10px; }
+    .field-option button[aria-pressed=true] { border-color:#d4d4df; background:#34343f; }
     .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
     @media (max-width:640px) {
       .main[data-secondary-open=true] { display:none; }
@@ -223,6 +230,10 @@
   const pickEssay = element('button', { id:'pick-essay', type:'button', disabled:true }, 'Escolher redação');
   const fieldSearchStatus = element('p', { id:'field-search-status', className:'muted', role:'status', hidden:true });
   const stopFieldSearch = element('button', { id:'stop-field-search', type:'button', hidden:true }, 'Parar busca');
+  const inspectFields = element('button', { id:'inspect-fields', type:'button', className:'full', 'aria-expanded':'false', 'aria-controls':'field-inspector' }, 'Ver campos da página');
+  const fieldInspectorSummary = element('p', { id:'field-inspector-summary', role:'status' });
+  const fieldInspectorList = element('div', { id:'field-inspector-list' });
+  const fieldInspector = element('div', { id:'field-inspector', hidden:true }, [fieldInspectorSummary,fieldInspectorList]);
   const close = element('button', { id:'close', type:'button', className:'icon-button', 'aria-label':'Fechar hub', title:'Fechar' }, icon('close'));
   const minimize = element('button', { id:'minimize', type:'button', className:'icon-button', 'aria-label':'Recolher hub', title:'Recolher', 'aria-expanded':'true', 'aria-controls':'panel-body' }, '−');
   const summaries = {};
@@ -280,7 +291,7 @@
       element('small',{ id:'result-count', className:'counter' },'0 palavras'),
       element('div',{ className:'row actions' },[copy,download]),fillPage,
       fieldSearchStatus,stopFieldSearch,
-      element('div',{ className:'row actions' },[pickTitle,pickEssay])
+      element('div',{ className:'row actions' },[pickTitle,pickEssay]),inspectFields,fieldInspector
     ])
   };
   const secondaryTitle = element('h2',{ id:'secondary-title' });
@@ -497,7 +508,8 @@
             // aria-hidden em um contêiner não torna uma caixa visível não editável.
             // A própria textarea e os espelhos de medição continuam excluídos.
             const staleMuiAncestor = context === node && muiTextarea(node) && current !== node;
-            if (current.hidden || current.inert || (hiddenFromAccess && !staleMuiAncestor) ||
+            // Form controls named "hidden" or "inert" can shadow these DOM properties.
+            if (current.hasAttribute('hidden') || current.hasAttribute('inert') || (hiddenFromAccess && !staleMuiAncestor) ||
                 current.getAttribute?.('aria-disabled') === 'true' || current.getAttribute?.('aria-readonly') === 'true') return false;
             const style = current.ownerDocument.defaultView.getComputedStyle(current);
             if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
@@ -524,12 +536,14 @@
     // Include open shadow roots and accessible editor frames, without touching cross-origin frames.
     function collect() {
       const fields = new Set();
+      const textareas = new Set();
       const documents = new Set();
       const roots = new Set();
       const frames = new Set();
       const seen = new Set();
       const pending = [{ root: document, depth: 0 }];
       let scanned = 0;
+      let inaccessibleFrames = 0;
       while (pending.length) {
         const { root, depth } = pending.shift();
         if (seen.has(root)) continue;
@@ -539,6 +553,7 @@
         // Controls and frames come first, including after large read-only page content.
         for (const element of root.querySelectorAll(fieldSelector)) {
           if (excluded(element)) continue;
+          if (element.tagName === 'TEXTAREA') textareas.add(element);
           const field = fieldFrom(element);
           if (field && editable(field)) fields.add(field);
         }
@@ -548,7 +563,8 @@
           if (element.getClientRects().length) {
             try {
               if (element.contentDocument?.documentElement) pending.push({ root: element.contentDocument, depth: depth + 1 });
-            } catch (_) {}
+              else if (element.contentWindow) inaccessibleFrames++;
+            } catch (_) { inaccessibleFrames++; }
           }
         }
         if (scanned < 30000) for (const element of root.querySelectorAll('*')) {
@@ -556,7 +572,7 @@
           if (!excluded(element) && element.shadowRoot) pending.push({ root: element.shadowRoot, depth });
         }
       }
-      return { fields: [...fields], documents: [...documents], roots, frames };
+      return { fields: [...fields], textareas: [...textareas], documents: [...documents], roots, frames, inaccessibleFrames };
     }
 
     function labelText(node) {
@@ -638,6 +654,10 @@
           (muiTextarea(item.element) && /\bproposta\b/.test(item.heading) && !/\b(apoio|referencia|contexto|instrucoes|enunciado|prompt)\b/.test(item.heading))));
       let titles = descriptions.filter(item => item.titleScore && item.element !== pinned.essay && editable(item.element, 'title'));
       let essays = descriptions.filter(item => item.essayScore && !item.titleScore && item.element !== pinned.title && editable(item.element, 'essay'));
+      const topTitleScore = titles.reduce((score, item) => Math.max(score, item.titleScore), 0);
+      const topEssayScore = essays.reduce((score, item) => Math.max(score, item.essayScore), 0);
+      titles = titles.filter(item => item.titleScore === topTitleScore);
+      essays = essays.filter(item => item.essayScore === topEssayScore);
       const editor = muiEditorPair(descriptions);
       // Explicit title/body labels take precedence over unrelated extra controls.
       if (!editor.pair && titles.length === 1 && essays.length === 1) editor.ambiguous = false;
@@ -676,6 +696,44 @@
           ? `${essay ? 'Redação encontrada; título' : 'Título encontrado; redação'} sem campo identificado.`
           : 'Campos de redação não encontrados. Você pode escolhê-los na página.';
       return { title, essay, status, ambiguous, candidates, message };
+    }
+
+    function inspect() {
+      const snapshot = collect();
+      const detection = detect(false, snapshot);
+      function rejection(element) {
+        if (!element.isConnected || excluded(element)) return 'unavailable';
+        if (element.disabled || element.matches(':disabled')) return 'disabled';
+        if (element.readOnly) return 'readonly';
+        if (element.getAttribute('aria-hidden') === 'true') return 'aria-hidden';
+        try {
+          for (let context = element; context; context = context.ownerDocument.defaultView.frameElement) {
+            if (!context.getClientRects().length) return 'not-visible';
+            for (let current = context; current; current = parentOf(current)) {
+              if (current.hasAttribute('hidden') || current.hasAttribute('inert') || current.getAttribute?.('aria-disabled') === 'true' ||
+                  current.getAttribute?.('aria-readonly') === 'true') return 'inert-or-ancestor';
+              if (current.getAttribute?.('aria-hidden') === 'true' &&
+                  !(context === element && muiTextarea(element) && current !== element)) return 'aria-hidden';
+              const style = current.ownerDocument.defaultView.getComputedStyle(current);
+              if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || Number(style.opacity) === 0) return 'not-visible';
+            }
+          }
+        } catch (_) { return 'unavailable'; }
+        return 'unavailable';
+      }
+      const fields = snapshot.textareas.map(element => {
+        const available = editable(element);
+        const labels = [...(element.labels || [])].map(labelText);
+        if (element.closest('label')) labels.push(labelText(element.closest('label')));
+        return { element, id: element.id, label: (labels.find(Boolean) || '').slice(0, 100), editable: available,
+          reason: available ? '' : rejection(element) };
+      });
+      return {
+        status: detection.status, message: detection.message,
+        textareaCount: fields.length, editableTextareaCount: fields.filter(field => field.editable).length,
+        candidateCounts: { title: detection.candidates.title.length, essay: detection.candidates.essay.length },
+        fields, inaccessibleFrames: snapshot.inaccessibleFrames
+      };
     }
 
     function waitForTargets({ signal, onWaiting } = {}) {
@@ -957,7 +1015,7 @@
       disposed = true; cancelPick(); pinned.title = null; pinned.essay = null;
       for (const wake of [...fieldWaiters]) wake();
     }
-    return { detect, fill, waitForTargets, setTargets, pick, cancelPick, dispose };
+    return { detect, inspect, fill, waitForTargets, setTargets, pick, cancelPick, dispose };
   }
   // END_PAGE_FILL
 
@@ -1024,7 +1082,7 @@
   }
 
   function setBusy(busy) {
-    for (const control of [contextInput,themeInput,levelInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,retryConnection,saveSource,saveWriting,...shadow.querySelectorAll('[data-choice]')]) {
+    for (const control of [contextInput,themeInput,levelInput,wordsInput,instructionsInput,capturePage,captureSelection,generate,retryConnection,saveSource,saveWriting,inspectFields,...shadow.querySelectorAll('[data-choice]')]) {
       control.disabled = busy;
     }
     for (const control of [fillPage,pickTitle,pickEssay]) control.disabled = busy || !resultInput.value.trim();
@@ -1256,6 +1314,58 @@
     cancel.hidden = !activeRequest && !searching;
   }
 
+  function renderFieldInspector() {
+    if (closed) return;
+    const inspection = pageFill.inspect();
+    const targets = pageFill.detect();
+    const reasons = {disabled:'Desativado pela página',readonly:'Somente leitura','aria-hidden':'Espelho oculto do editor','not-visible':'Oculto na página','inert-or-ancestor':'Indisponível no contêiner da página',unavailable:'Indisponível'};
+    let summary = `${inspection.textareaCount} caixas de texto encontradas; ${inspection.editableTextareaCount} editáveis. Escolha qual recebe o título e qual recebe a redação.`;
+    if (!inspection.textareaCount) {
+      summary = location.origin === SERVICE_ORIGIN
+        ? 'Este hub está aberto na janela do serviço. Para preencher a atividade, abra o favorito na própria aba da Sala do Futuro.'
+        : 'Nenhuma caixa de texto foi encontrada nesta aba. Abra a área de escrita da atividade e clique novamente em Ver campos da página.';
+    } else if (!inspection.editableTextareaCount) summary += ' As caixas abaixo estão ocultas ou bloqueadas pela página.';
+    if (inspection.inaccessibleFrames) summary += ` ${inspection.inaccessibleFrames} quadro(s) de outra origem não podem ser acessados nesta aba.`;
+    fieldInspectorSummary.textContent = summary;
+    fieldInspectorList.replaceChildren();
+    inspection.fields.forEach((field,index) => {
+      const row = element('div',{className:'field-option'},[
+        element('strong',{},`${index + 1}. ${field.label || 'Caixa de texto'}`),
+        element('small',{},field.id ? `ID: ${field.id}` : 'Sem ID')
+      ]);
+      if (!field.editable) row.append(element('small',{},reasons[field.reason] || reasons.unavailable));
+      else {
+        const actions = element('div',{className:'row'});
+        for (const kind of ['title','essay']) {
+          const selected = targets[kind] === field.element;
+          const other = targets[kind === 'title' ? 'essay' : 'title'];
+          const button = element('button',{
+            id:`select-${kind}-${index}`,type:'button','aria-pressed':String(selected),
+            disabled:Boolean(activeRequest) || other === field.element
+          },`${kind === 'title' ? 'Título' : 'Redação'}${selected ? ' selecionado' : ''}`);
+          button.addEventListener('click',async () => {
+            if (closed || activeRequest) return;
+            try {
+              const detection = pageFill.setTargets({[kind]:field.element});
+              renderFieldInspector();
+              setStatus('Campo vinculado. Ao identificar os dois campos, o hub aplica a redação já gerada.');
+              hubMotion.toast({id:'field-selection',title:'Campo vinculado',message:kind === 'title' ? 'Campo do título selecionado.' : 'Campo da redação selecionado.'});
+              if (detection.status === 'ready' && !pendingFill && resultInput.value.trim()) await fillPageFields();
+            } catch (error) {
+              renderFieldInspector();
+              setStatus(error?.message || 'Este campo não está mais disponível. Atualize a lista.','warning');
+            }
+          });
+          actions.append(button);
+        }
+        row.append(actions);
+      }
+      fieldInspectorList.append(row);
+    });
+    fieldInspector.hidden = false;
+    inspectFields.setAttribute('aria-expanded','true');
+  }
+
   function stopFieldSearchJob(announce = false) {
     const job = pendingFill;
     if (!job) return;
@@ -1286,7 +1396,10 @@
     (async () => {
       try {
         while (!closed && pendingFill === job && !job.controller.signal.aborted) {
-          const targets = await pageFill.waitForTargets({signal:job.controller.signal});
+          const targets = await pageFill.waitForTargets({signal:job.controller.signal,onWaiting:detection => {
+            if (closed || pendingFill !== job) return;
+            fieldSearchStatus.textContent = `Procurando os campos… ${detection.candidates.title.length} candidato(s) a título e ${detection.candidates.essay.length} a redação. Use Ver campos da página para escolher diretamente.`;
+          }});
           if (!targets || closed || pendingFill !== job || job.controller.signal.aborted) return;
           if (resultTitleInput.value !== job.title || resultInput.value !== job.essay) return;
           const outcome = await fillPageFields(job.controller.signal,false,job.preserveTargets);
@@ -1513,6 +1626,7 @@
     await fillPageFields();
   });
   stopFieldSearch.addEventListener('click',() => stopFieldSearchJob(true));
+  inspectFields.addEventListener('click',renderFieldInspector);
   pickTitle.addEventListener('click',() => choosePageField('title'));
   pickEssay.addEventListener('click',() => choosePageField('essay'));
   retryConnection.addEventListener('click',() => {
