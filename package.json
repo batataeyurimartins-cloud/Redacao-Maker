@@ -1,6 +1,6 @@
 {
   "name": "redator-batata-console",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "private": true,
   "description": "Hub preto e compacto para redações em português com geração por IA, direto no console",
   "scripts": {

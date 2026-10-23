@@ -567,7 +567,7 @@ test('mobile reinjection restores the hub from an open secondary pane and preser
   assert.equal(await control(page, 'level').inputValue(), '5');
 });
 
-test('upgrading a legacy provider panel calls its cleanup once and replaces it with one Redator Batata hub', async t => {
+test('upgrading legacy provider and Maker panels calls cleanup once and leaves one Redator Batata hub', async t => {
   const page = await mount(t);
   await control(page, 'close').click();
   await page.evaluate(() => {
@@ -584,16 +584,43 @@ test('upgrading a legacy provider panel calls its cleanup once and replaces it w
     oldPanel.attachShadow({ mode: 'open' }).append(oldClose);
     document.documentElement.append(oldPanel);
     window.oldPanelForTest = oldPanel;
+    const makerPanel = document.createElement('div');
+    makerPanel.dataset.batataRedacao = 'hub';
+    const makerClose = document.createElement('button');
+    makerClose.id = 'close';
+    window.oldMakerCloseCalls = 0;
+    window.oldMakerRequest = new AbortController();
+    window.__batataRedacaoHub = { open() {} };
+    makerClose.addEventListener('click', () => {
+      window.oldMakerCloseCalls += 1;
+      window.oldMakerRequest.abort();
+      makerPanel.remove();
+      delete window.__batataRedacaoHub;
+    });
+    makerPanel.attachShadow({ mode: 'open' }).append(makerClose);
+    document.documentElement.append(makerPanel);
+    window.oldMakerPanelForTest = makerPanel;
+    const incompleteMakerPanel = document.createElement('div');
+    incompleteMakerPanel.dataset.batataRedacao = 'hub';
+    document.documentElement.append(incompleteMakerPanel);
   });
   await page.addScriptTag({ content: script });
   assert.equal(await page.evaluate(() => window.oldPanelCloseCalls), 1);
   assert.equal(await page.evaluate(() => window.oldPanelForTest.isConnected), false);
+  assert.equal(await page.evaluate(() => window.oldMakerCloseCalls), 1);
+  assert.equal(await page.evaluate(() => window.oldMakerRequest.signal.aborted), true);
+  assert.equal(await page.evaluate(() => window.oldMakerPanelForTest.isConnected), false);
+  assert.equal(await page.evaluate(() => '__batataRedacaoHub' in window), false);
+  assert.equal(await page.locator('[data-batata-redacao="hub"]').count(), 0);
   assert.equal(await page.locator('#redator-batata-console').count(), 1);
   assert.equal(await control(page, 'main-panel').isVisible(), true);
-  assert.equal(await page.locator('#redator-batata-console').getAttribute('data-redator-version'), '1.10.1');
+  assert.equal(await page.locator('#redator-batata-console').getAttribute('data-redator-version'), '1.10.2');
   assert.equal(await page.locator('#redator-groq-console').count(), 0);
+  await page.evaluate(() => { window.__batataRedacaoHub = { unrelatedMarker: true }; });
   await page.addScriptTag({ content: script });
   assert.equal(await page.evaluate(() => window.oldPanelCloseCalls), 1);
+  assert.equal(await page.evaluate(() => window.oldMakerCloseCalls), 1);
+  assert.equal(await page.evaluate(() => window.__batataRedacaoHub.unrelatedMarker), true);
   assert.equal(await page.locator('#redator-batata-console').count(), 1);
 });
 

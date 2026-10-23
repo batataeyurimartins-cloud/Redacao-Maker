@@ -3,12 +3,20 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-batata-console';
-  const VERSION = '1.10.1';
+  const VERSION = '1.10.2';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
   const TIMEOUT_MS = 90000;
   const BLOCKED_CONNECTION_MESSAGE = 'Esta página bloqueia conexões externas por CSP. Clique em Gerar em janela auxiliar para tentar pela conexão do serviço.';
+  const previousMakerPanels = [...document.querySelectorAll('[data-batata-redacao="hub"]')];
+  if (previousMakerPanels.length) {
+    for (const panel of previousMakerPanels) {
+      panel.shadowRoot?.getElementById('close')?.click();
+      panel.remove();
+    }
+    delete window.__batataRedacaoHub;
+  }
   const previousBrand = document.getElementById('redator-groq-console');
   if (previousBrand) {
     previousBrand.shadowRoot?.getElementById('close')?.click();
