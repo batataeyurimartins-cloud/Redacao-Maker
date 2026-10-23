@@ -3,7 +3,7 @@
 
   // Cole este arquivo inteiro no console. Não há dependências ou instalação.
   const PANEL_ID = 'redator-groq-console';
-  const VERSION = '1.6.0';
+  const VERSION = '1.7.0';
   const SERVICE_ORIGIN = 'https://redacao-maker.vercel.app';
   const API_URL = `${SERVICE_ORIGIN}/api/generate`;
   const MAX_CONTEXT = 18000;
@@ -46,6 +46,10 @@
   let connectionBlockedByPolicy = false;
   let generatedNotice = null;
   let filledNotice = null;
+  let pendingFill = null;
+  let searchNotice = null;
+  let fillTail = Promise.resolve();
+  let fillRevision = 0;
   const host = document.createElement('div');
   host.id = PANEL_ID;
   host.dataset.redatorVersion = VERSION;
@@ -217,6 +221,8 @@
   const fillPage = element('button', { id:'fill-page', type:'button', className:'full', disabled:true }, 'Preencher página');
   const pickTitle = element('button', { id:'pick-title', type:'button', disabled:true }, 'Escolher título');
   const pickEssay = element('button', { id:'pick-essay', type:'button', disabled:true }, 'Escolher redação');
+  const fieldSearchStatus = element('p', { id:'field-search-status', className:'muted', role:'status', hidden:true });
+  const stopFieldSearch = element('button', { id:'stop-field-search', type:'button', hidden:true }, 'Parar busca');
   const close = element('button', { id:'close', type:'button', className:'icon-button', 'aria-label':'Fechar hub', title:'Fechar' }, icon('close'));
   const minimize = element('button', { id:'minimize', type:'button', className:'icon-button', 'aria-label':'Recolher hub', title:'Recolher', 'aria-expanded':'true', 'aria-controls':'panel-body' }, '−');
   const summaries = {};
@@ -273,6 +279,7 @@
       element('label',{ htmlFor:'result' },'Redação gerada'),resultInput,
       element('small',{ id:'result-count', className:'counter' },'0 palavras'),
       element('div',{ className:'row actions' },[copy,download]),fillPage,
+      fieldSearchStatus,stopFieldSearch,
       element('div',{ className:'row actions' },[pickTitle,pickEssay])
     ])
   };
@@ -456,6 +463,7 @@
     const fieldSelector = 'input,textarea,[contenteditable],[role="textbox"]';
     let disposed = false;
     let pendingPick = null;
+    const fieldWaiters = new Set();
 
     const normalize = value => String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -463,7 +471,13 @@
     const essayCue = /\b(redacao|essay|composition|desenvolvimento)\b|\b(seu|sua|your) (texto|redacao|text|essay)\b|\b(corpo do texto|texto da resposta|escreva (aqui|seu texto)|digite seu texto)\b/;
     const unrelated = /\b(referencia|reference|apoio|proposta|enunciado|prompt|contexto|context|instrucao|instrucoes|motivador|motivadores|pesquisa|pesquisar|search|busca|email|e mail|senha|password|usuario|username|login|telefone|phone|comentario|comment|mensagem|message|chat|feedback|observacao|tema|theme|subject)\b|\bnome completo\b/;
     const referenceHeading = /\b(texto de apoio|textos de apoio|proposta|enunciado|referencia|instrucoes|prompt|contexto)\b/;
-    const salaActivity = location.hostname === 'saladofuturo.educacao.sp.gov.br' && /^\/atividade(?:\/|$)/.test(location.pathname);
+    function salaActivity(node = document) {
+      try {
+        const doc = node.nodeType === 9 ? node : node.ownerDocument || document;
+        const current = doc.location?.hostname ? doc.location : location;
+        return current.hostname === 'saladofuturo.educacao.sp.gov.br' && /^\/atividade(?:\/|$)/.test(current.pathname);
+      } catch (_) { return false; }
+    }
     const muiTextarea = node => node?.tagName === 'TEXTAREA' && node.classList.contains('MuiInputBase-input') && node.classList.contains('MuiInputBase-inputMultiline');
     const parentOf = node => node?.parentElement || node?.getRootNode?.()?.host || null;
     function notify(result) { try { onStatus?.(result); } catch (_) {} }
@@ -489,7 +503,7 @@
             const hiddenFromAccess = current.getAttribute?.('aria-hidden') === 'true';
             // Algumas telas da Sala mantêm aria-hidden em contêineres ainda visíveis.
             // A própria textarea e os espelhos de medição continuam excluídos.
-            const staleSalaAncestor = salaActivity && muiTextarea(node) && current !== node;
+            const staleSalaAncestor = salaActivity(node) && muiTextarea(node) && current !== node;
             if (current.hidden || current.inert || (hiddenFromAccess && !staleSalaAncestor) ||
                 current.getAttribute?.('aria-disabled') === 'true' || current.getAttribute?.('aria-readonly') === 'true') return false;
             const style = current.ownerDocument.defaultView.getComputedStyle(current);
@@ -518,30 +532,38 @@
     function collect() {
       const fields = new Set();
       const documents = new Set();
+      const roots = new Set();
+      const frames = new Set();
       const seen = new Set();
       const pending = [{ root: document, depth: 0 }];
       let scanned = 0;
-      while (pending.length && scanned < 30000) {
+      while (pending.length) {
         const { root, depth } = pending.shift();
         if (seen.has(root)) continue;
         seen.add(root);
+        roots.add(root);
         if (root.nodeType === 9) documents.add(root);
-        for (const element of root.querySelectorAll('*')) {
-          if (++scanned > 30000) break;
+        // Controls and frames come first, including after large read-only page content.
+        for (const element of root.querySelectorAll(fieldSelector)) {
           if (excluded(element)) continue;
-          if (element.matches(fieldSelector)) {
-            const field = fieldFrom(element);
-            if (field && editable(field)) fields.add(field);
-          }
-          if (element.shadowRoot) pending.push({ root: element.shadowRoot, depth });
-          if (element.tagName === 'IFRAME' && depth < 3 && element.getClientRects().length) {
+          const field = fieldFrom(element);
+          if (field && editable(field)) fields.add(field);
+        }
+        if (depth < 3) for (const element of root.querySelectorAll('iframe')) {
+          if (excluded(element)) continue;
+          frames.add(element);
+          if (element.getClientRects().length) {
             try {
               if (element.contentDocument?.documentElement) pending.push({ root: element.contentDocument, depth: depth + 1 });
             } catch (_) {}
           }
         }
+        if (scanned < 30000) for (const element of root.querySelectorAll('*')) {
+          if (++scanned > 30000) break;
+          if (!excluded(element) && element.shadowRoot) pending.push({ root: element.shadowRoot, depth });
+        }
       }
-      return { fields: [...fields], documents: [...documents] };
+      return { fields: [...fields], documents: [...documents], roots, frames };
     }
 
     function labelText(node) {
@@ -602,8 +624,7 @@
     }
 
     function salaEditorPair(descriptions) {
-      if (!salaActivity) return { pair:null, ambiguous:false };
-      const fields = descriptions.filter(item => muiTextarea(item.element));
+      const fields = descriptions.filter(item => salaActivity(item.element) && muiTextarea(item.element));
       if (fields.length > 2) return { pair:null, ambiguous:true };
       if (fields.length !== 2 || fields[0].element.ownerDocument !== fields[1].element.ownerDocument) return { pair:null, ambiguous:false };
       const [first,second] = fields.map(item => item.element);
@@ -618,12 +639,12 @@
       return { pair:fields, ambiguous:false };
     }
 
-    function detect(allowDisposed = false) {
+    function detect(allowDisposed = false, snapshot = null) {
       if (disposed && !allowDisposed) return { title: null, essay: null, status: 'not-found', ambiguous: { title: false, essay: false }, candidates: { title: [], essay: [] }, message: 'Preenchimento encerrado.' };
       for (const kind of ['title', 'essay']) if (pinned[kind] && !editable(pinned[kind], kind)) pinned[kind] = null;
-      const descriptions = collect().fields.map(describe).filter(item => !unrelated.test(item.direct) &&
+      const descriptions = (snapshot || collect()).fields.map(describe).filter(item => !unrelated.test(item.direct) &&
         (!referenceHeading.test(item.heading) || item.titleScore >= 120 || item.essayScore >= 120 ||
-          (salaActivity && muiTextarea(item.element) && /\bproposta\b/.test(item.heading) && !/\b(apoio|referencia|contexto|instrucoes|enunciado|prompt)\b/.test(item.heading))));
+          (salaActivity(item.element) && muiTextarea(item.element) && /\bproposta\b/.test(item.heading) && !/\b(apoio|referencia|contexto|instrucoes|enunciado|prompt)\b/.test(item.heading))));
       let titles = descriptions.filter(item => item.titleScore && item.element !== pinned.essay && editable(item.element, 'title'));
       let essays = descriptions.filter(item => item.essayScore && !item.titleScore && item.element !== pinned.title && editable(item.element, 'essay'));
       const sala = salaEditorPair(descriptions);
@@ -664,6 +685,84 @@
       return { title, essay, status, ambiguous, candidates, message };
     }
 
+    function waitForTargets({ signal, onWaiting } = {}) {
+      if (disposed || signal?.aborted) return Promise.resolve(null);
+      return new Promise(resolve => {
+        let finished = false;
+        let debounce = null;
+        let interval = null;
+        const observers = new Map();
+        const frameListeners = new Map();
+        const attributes = ['hidden','inert','disabled','readonly','aria-hidden','aria-disabled','aria-readonly',
+          'style','class','id','name','title','type','role','contenteditable','aria-label','aria-labelledby',
+          'placeholder','data-placeholder','data-testid','data-field','for','rows','src','srcdoc'];
+
+        function finish(result) {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(debounce);
+          window.clearInterval(interval);
+          for (const observer of observers.values()) observer.disconnect();
+          for (const [frame, listener] of frameListeners) frame.removeEventListener('load', listener);
+          observers.clear(); frameListeners.clear();
+          signal?.removeEventListener('abort', cancel);
+          fieldWaiters.delete(check);
+          resolve(result);
+        }
+        const cancel = () => finish(null);
+        function schedule() {
+          if (finished) return;
+          window.clearTimeout(debounce);
+          debounce = window.setTimeout(check, 150);
+        }
+        function changed(records) {
+          const relevant = records.some(record => {
+            if (excluded(record.target)) return false;
+            if (record.type !== 'childList') return true;
+            return [...record.addedNodes, ...record.removedNodes].some(node => !excluded(node));
+          });
+          if (relevant) schedule();
+        }
+        function observe(snapshot) {
+          for (const [root, observer] of observers) if (!snapshot.roots.has(root)) {
+            observer.disconnect(); observers.delete(root);
+          }
+          for (const root of snapshot.roots) if (!observers.has(root)) {
+            try {
+              const win = (root.ownerDocument || root).defaultView;
+              const observer = new win.MutationObserver(changed);
+              observer.observe(root, { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:attributes });
+              observers.set(root, observer);
+            } catch (_) {}
+          }
+          for (const [frame, listener] of frameListeners) if (!snapshot.frames.has(frame)) {
+            frame.removeEventListener('load', listener); frameListeners.delete(frame);
+          }
+          for (const frame of snapshot.frames) if (!frameListeners.has(frame)) {
+            frame.addEventListener('load', schedule); frameListeners.set(frame, schedule);
+          }
+        }
+        function check() {
+          if (finished) return;
+          window.clearTimeout(debounce); debounce = null;
+          if (disposed || signal?.aborted) { finish(null); return; }
+          const snapshot = collect();
+          const detection = detect(false, snapshot);
+          if (detection.title && detection.essay && !detection.ambiguous.title && !detection.ambiguous.essay) {
+            finish(detection); return;
+          }
+          observe(snapshot);
+          try { onWaiting?.(detection); } catch (_) {}
+        }
+        fieldWaiters.add(check);
+        signal?.addEventListener('abort', cancel, { once:true });
+        // Polling also notices SPA navigation, new shadow roots and property-only changes.
+        // It remains independent of the debounce so continuous mutations cannot starve discovery.
+        interval = window.setInterval(check, 1000);
+        check();
+      });
+    }
+
     function setTargets(targets = {}) {
       for (const kind of ['title', 'essay']) {
         if (!Object.prototype.hasOwnProperty.call(targets, kind)) continue;
@@ -673,7 +772,9 @@
         if (node && node === (Object.prototype.hasOwnProperty.call(targets, other) ? targets[other] : pinned[other])) throw new TypeError('Escolha campos diferentes para título e redação.');
       }
       for (const kind of ['title', 'essay']) if (Object.prototype.hasOwnProperty.call(targets, kind)) pinned[kind] = targets[kind] || null;
-      return detect();
+      const detection = detect();
+      for (const wake of [...fieldWaiters]) wake();
+      return detection;
     }
 
     function dispatchInput(element, text) {
@@ -747,9 +848,10 @@
       }
     }
 
-    async function fill({ title, essay, signal } = {}) {
+    async function fill({ title, essay, signal, preserveTargets = {} } = {}) {
       const result = { filledTitle: false, filledEssay: false, status: 'invalid', message: '', errors: [] };
       const writes = [];
+      const preserved = [];
       const stopped = () => disposed || signal?.aborted;
       const settle = () => new Promise(resolve => {
         // Deixa o estado do site atualizar antes de iniciar a espera de renderização.
@@ -785,6 +887,7 @@
         if (detection.ambiguous.title || detection.ambiguous.essay) break;
         const target = detection[kind];
         if (!target || !text) continue;
+        if (preserveTargets?.[kind] === target) { preserved.push({ kind, target }); continue; }
         if (!editable(target, kind)) { result.errors.push(`O campo de ${kind === 'title' ? 'título' : 'redação'} ficou indisponível.`); continue; }
         const max = target.matches('input,textarea') ? target.maxLength : -1;
         if (max >= 0 && text.length > max) { result.errors.push(`O campo de ${kind === 'title' ? 'título' : 'redação'} aceita até ${max} caracteres; o texto foi preservado no hub.`); continue; }
@@ -800,8 +903,11 @@
         catch (_) { result.errors.push(`Não foi possível preencher o campo de ${kind === 'title' ? 'título' : 'redação'}.`); }
       }
       if (stopped()) return rollback();
-      if (writes.length) {
+      if (writes.length || preserved.length) {
         detection = detect();
+        for (const { kind, target } of preserved) {
+          if (detection[kind] === target && editable(target, kind) && canonical(read(target))) result[kind === 'title' ? 'filledTitle' : 'filledEssay'] = true;
+        }
         for (const { kind, text } of writes) {
           const target = detection[kind];
           if (editable(target, kind) && canonical(read(target)) === canonical(text)) result[kind === 'title' ? 'filledTitle' : 'filledEssay'] = true;
@@ -854,8 +960,11 @@
     }
 
     function cancelPick() { pendingPick?.(); }
-    function dispose() { disposed = true; cancelPick(); pinned.title = null; pinned.essay = null; }
-    return { detect, fill, setTargets, pick, cancelPick, dispose };
+    function dispose() {
+      disposed = true; cancelPick(); pinned.title = null; pinned.essay = null;
+      for (const wake of [...fieldWaiters]) wake();
+    }
+    return { detect, fill, waitForTargets, setTargets, pick, cancelPick, dispose };
   }
   // END_PAGE_FILL
 
@@ -926,7 +1035,7 @@
       control.disabled = busy;
     }
     for (const control of [fillPage,pickTitle,pickEssay]) control.disabled = busy || !resultInput.value.trim();
-    cancel.hidden = !busy;
+    cancel.hidden = !busy && !pendingFill;
     generateText.textContent = busy ? 'Gerando…' : 'Gerar redação';
     hubMotion.busy(generate,busy);
     body.setAttribute('aria-busy', String(busy));
@@ -1145,15 +1254,79 @@
   }
   document.addEventListener('securitypolicyviolation',observeConnectionPolicy);
 
-  async function fillPageFields(signal) {
-    if (closed || !resultInput.value.trim()) return null;
-    const outcome = await pageFill.fill({title:resultTitleInput.value.trim(),essay:resultInput.value,signal});
-    if (closed || signal?.aborted) return null;
-    setStatus(`Redação pronta. ${outcome.message}`,['ready','filled'].includes(outcome.status) ? 'info' : 'warning');
-    const complete = outcome.filledTitle && outcome.filledEssay;
-    const partial = outcome.filledTitle || outcome.filledEssay;
-    filledNotice = hubMotion.toast({id:'essay-filled',title:complete ? 'Redação preenchida' : partial ? 'Redação parcialmente preenchida' : 'Escolha os campos',message:outcome.message,kind:complete ? 'success' : 'warning'});
-    return outcome;
+  function syncFieldSearch() {
+    const searching = Boolean(pendingFill);
+    host.dataset.fieldSearch = searching ? 'searching' : 'idle';
+    fieldSearchStatus.hidden = !searching;
+    stopFieldSearch.hidden = !searching;
+    fieldSearchStatus.textContent = searching ? 'Procurando os campos de título e redação… Abra a área de escrita na página. O hub continua tentando até encontrar os dois campos.' : '';
+    cancel.hidden = !activeRequest && !searching;
+  }
+
+  function stopFieldSearchJob(announce = false) {
+    const job = pendingFill;
+    if (!job) return;
+    pendingFill = null;
+    if (announce) pageFill.cancelPick();
+    job.controller.abort();
+    searchNotice?.();
+    searchNotice = null;
+    syncFieldSearch();
+    if (announce && !closed) {
+      setStatus('Busca de campos cancelada. O título e a redação continuam no hub.');
+      hubMotion.toast({id:'field-search-stopped',title:'Busca cancelada',message:'Seu título e sua redação foram preservados no hub.',kind:'info'});
+    }
+  }
+
+  function startFieldSearch(initialOutcome) {
+    stopFieldSearchJob();
+    if (closed || !resultInput.value.trim()) return;
+    const detected = pageFill.detect();
+    const preserveTargets = {};
+    if (initialOutcome?.filledTitle && detected.title) preserveTargets.title = detected.title;
+    if (initialOutcome?.filledEssay && detected.essay) preserveTargets.essay = detected.essay;
+    const job = {controller:new AbortController(),title:resultTitleInput.value,essay:resultInput.value,preserveTargets};
+    pendingFill = job;
+    syncFieldSearch();
+    searchNotice = hubMotion.toast({id:'field-search',title:'Procurando os campos',message:'O hub continua tentando. Abra os campos na página ou use Escolher título e Escolher redação.',kind:'info'});
+    setStatus('Redação pronta. Procurando os campos de título e redação até encontrar. Você pode abrir a área de escrita ou escolher os campos manualmente.');
+    (async () => {
+      try {
+        while (!closed && pendingFill === job && !job.controller.signal.aborted) {
+          const targets = await pageFill.waitForTargets({signal:job.controller.signal});
+          if (!targets || closed || pendingFill !== job || job.controller.signal.aborted) return;
+          if (resultTitleInput.value !== job.title || resultInput.value !== job.essay) return;
+          const outcome = await fillPageFields(job.controller.signal,false,job.preserveTargets);
+          if (!outcome || ((job.preserveTargets.title || outcome.filledTitle) && (job.preserveTargets.essay || outcome.filledEssay)) || outcome.errors?.length ||
+              !['not-found','ambiguous','partial'].includes(outcome.status)) return;
+        }
+      } catch (_) {
+        if (!closed && pendingFill === job && !job.controller.signal.aborted) {
+          setStatus('A busca foi interrompida. Seu texto está no hub; clique em Preencher página para procurar de novo.','warning');
+        }
+      } finally {
+        if (pendingFill === job) stopFieldSearchJob();
+      }
+    })();
+  }
+
+  async function fillPageFields(signal, keepSearching = true, preserveTargets = {}) {
+    const revision = fillRevision;
+    const previous = fillTail;
+    let release;
+    fillTail = new Promise(resolve => { release = resolve; });
+    try {
+      await previous;
+      if (closed || signal?.aborted || revision !== fillRevision || !resultInput.value.trim()) return null;
+      const outcome = await pageFill.fill({title:resultTitleInput.value.trim(),essay:resultInput.value,signal,preserveTargets});
+      if (closed || signal?.aborted || revision !== fillRevision) return null;
+      setStatus(`Redação pronta. ${outcome.message}`,['ready','filled'].includes(outcome.status) ? 'info' : 'warning');
+      const complete = outcome.filledTitle && outcome.filledEssay;
+      const partial = outcome.filledTitle || outcome.filledEssay;
+      filledNotice = hubMotion.toast({id:'essay-filled',title:complete ? 'Redação preenchida' : partial ? 'Redação parcialmente preenchida' : 'Escolha os campos',message:outcome.message,kind:complete ? 'success' : 'warning'});
+      if (keepSearching && !complete && !outcome.errors?.length && ['not-found','ambiguous','partial'].includes(outcome.status)) startFieldSearch(outcome);
+      return outcome;
+    } finally { release(); }
   }
 
   async function choosePageField(kind) {
@@ -1162,7 +1335,7 @@
     const selected = await pageFill.pick(kind);
     if (closed) return;
     openPane('result');
-    if (selected) setStatus('Campo selecionado. Clique em Preencher página para aplicar o título e a redação.');
+    if (selected) setStatus(pendingFill ? 'Campo selecionado. A busca continua até encontrar os dois campos.' : 'Campo selecionado. Clique em Preencher página para aplicar o título e a redação.');
   }
 
   async function generateEssay() {
@@ -1180,6 +1353,8 @@
     }
     closePane(false);
     pageFill.cancelPick?.();
+    fillRevision += 1;
+    stopFieldSearchJob();
     generatedNotice?.();
     filledNotice?.();
     generatedNotice = null;
@@ -1267,6 +1442,7 @@
   function cleanup() {
     if (closed) return;
     closed = true;
+    stopFieldSearchJob();
     host.removeAttribute('id');
     host.style.setProperty('pointer-events','none','important');
     if (activeRequest) {
@@ -1340,8 +1516,10 @@
   generate.addEventListener('click',generateEssay);
   fillPage.addEventListener('click',async () => {
     if (activeRequest || closed) return;
+    stopFieldSearchJob();
     await fillPageFields();
   });
+  stopFieldSearch.addEventListener('click',() => stopFieldSearchJob(true));
   pickTitle.addEventListener('click',() => choosePageField('title'));
   pickEssay.addEventListener('click',() => choosePageField('essay'));
   retryConnection.addEventListener('click',() => {
@@ -1349,7 +1527,7 @@
     generateEssay();
   });
   cancel.addEventListener('click',() => {
-    if (!activeRequest) return;
+    if (!activeRequest) { stopFieldSearchJob(true); return; }
     activeRequest.reason = 'user';
     activeRequest.controller.abort();
   });
