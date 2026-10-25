@@ -614,7 +614,7 @@ test('upgrading legacy provider and Maker panels calls cleanup once and leaves o
   assert.equal(await page.locator('[data-batata-redacao="hub"]').count(), 0);
   assert.equal(await page.locator('#redator-batata-console').count(), 1);
   assert.equal(await control(page, 'main-panel').isVisible(), true);
-  assert.equal(await page.locator('#redator-batata-console').getAttribute('data-redator-version'), '1.10.2');
+  assert.equal(await page.locator('#redator-batata-console').getAttribute('data-redator-version'), '1.11.0');
   assert.equal(await page.locator('#redator-groq-console').count(), 0);
   await page.evaluate(() => { window.__batataRedacaoHub = { unrelatedMarker: true }; });
   await page.addScriptTag({ content: script });

@@ -7,62 +7,104 @@
   <meta name="description" content="Salve o bookmarklet Redator Batata nos favoritos e abra o hub na página com um clique.">
   <title>Redator Batata · bookmarklet</title>
   <style>
-    :root { color-scheme:dark; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#0b0b0e; color:#efeff3; }
+    :root { color-scheme:dark; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#0e1010; color:#f2f4ef; --accent:#c3ed9b; --muted:#a4aaa2; }
     * { box-sizing:border-box; }
-    body { margin:0; padding:48px 20px; min-height:100vh; display:grid; place-items:center; }
-    main { width:100%; max-width:480px; }
-    header { display:flex; align-items:center; gap:9px; margin-bottom:22px; }
-    .logo { width:30px; height:30px; display:grid; place-items:center; border:1px solid #ffffff24; border-radius:9px; font-size:12px; color:#bdbdc8; }
-    .brand { font-size:14px; font-weight:650; letter-spacing:-.3px; }
-    .badge { font-size:9px; letter-spacing:1px; border:1px solid #ffffff24; border-radius:4px; padding:2px 5px; color:#9999a7; }
-    .card { border:1px solid #ffffff20; background:#111115; border-radius:18px; padding:25px; box-shadow:0 18px 65px #0004; }
-    h1 { font-size:24px; line-height:1.25; font-weight:600; letter-spacing:-.8px; margin:0 0 10px; }
-    p { color:#a2a2b0; font-size:13px; line-height:1.7; margin:0 0 18px; }
+    body { margin:0; min-height:100vh; padding:34px 28px 28px; background:radial-gradient(ellipse at 12% 42%,#c3ed9b06,transparent 55%); }
+    main { width:100%; max-width:1080px; margin:0 auto; }
+    header { display:flex; align-items:center; gap:10px; padding-bottom:27px; border-bottom:1px solid #ffffff0d; }
+    .logo { width:36px; height:36px; display:grid; place-items:center; background:var(--accent); border-radius:11px; color:#172115; }
+    .logo svg { width:20px; height:20px; }
+    .brand { font-size:17px; font-weight:650; letter-spacing:-.5px; }
+    .badge { font-size:9px; letter-spacing:1.5px; border:1px solid #c3ed9b24; border-radius:5px; padding:3px 6px; color:var(--accent); }
+    .header-note { margin-left:auto; color:#8c958a; font-size:11px; letter-spacing:.4px; }
+    .layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,450px); gap:72px; align-items:start; padding:60px 0 40px; }
+    .intro { padding-top:17px; }
+    .eyebrow { display:flex; align-items:center; gap:9px; margin:0 0 22px; font-size:10px; font-weight:650; letter-spacing:1.8px; color:var(--accent); }
+    .eyebrow::before { content:""; width:6px; height:6px; flex-shrink:0; border-radius:50%; background:var(--accent); }
+    h1 { max-width:440px; margin:0 0 24px; font-size:clamp(40px,5vw,60px); line-height:1.08; font-weight:550; letter-spacing:-2.7px; text-wrap:balance; }
+    h1 span { color:var(--accent); }
+    p { color:var(--muted); font-size:14px; line-height:1.75; margin:0 0 18px; }
+    .intro-copy { max-width:360px; font-size:15px; }
+    .editor-example { position:relative; width:100%; max-width:350px; margin:37px 0 0 28px; padding:17px; border:1px solid #ffffff17; border-radius:18px; background:#151718; box-shadow:0 22px 60px #0004; transform:rotate(-3deg); }
+    .example-header { display:flex; align-items:center; gap:8px; padding-bottom:14px; border-bottom:1px solid #ffffff0b; font-size:12px; font-weight:600; }
+    .example-symbol { display:grid; place-items:center; width:25px; height:25px; background:#c3ed9b15; border-radius:7px; color:var(--accent); }
+    .example-version { margin-left:auto; color:#818b7e; font-size:9px; font-weight:400; }
+    .example-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:13px 0; color:#a4aaa2; font-size:11px; }
+    .example-row span:last-child { color:#e0e6da; }
+    .example-action { display:block; margin-top:17px; padding:11px; background:var(--accent); border-radius:10px; text-align:center; color:#182113; font-size:11px; font-weight:650; }
+    .example-caption { margin:23px 0 0 28px; color:#8e9789; font-size:11px; }
+    .card { min-width:0; border:1px solid #ffffff16; background:#151718; border-radius:22px; padding:28px; box-shadow:0 18px 65px #0002; }
+    .card .eyebrow { margin-bottom:10px; font-size:9px; color:#99a392; }
+    .card .eyebrow::before { display:none; }
+    h2 { margin:0; font-size:24px; font-weight:550; letter-spacing:-.8px; line-height:1.25; }
+    .card-description { margin:8px 0 0; font-size:12px; }
     ol { list-style:none; counter-reset:step; margin:24px 0; padding:0; }
-    li { counter-increment:step; display:flex; gap:10px; font-size:12px; line-height:1.7; color:#bdbdc9; margin:0 0 15px; }
-    li::before { content:counter(step); width:21px; height:21px; flex:0 0 auto; display:grid; place-items:center; border:1px solid #ffffff24; border-radius:6px; font-size:10px; color:#efeff3; }
-    strong { color:#efeff3; font-weight:550; }
+    li { counter-increment:step; display:flex; gap:12px; font-size:12px; line-height:1.75; color:#aeb5a9; margin:0 0 16px; }
+    li::before { content:counter(step,decimal-leading-zero); width:27px; height:27px; flex:0 0 auto; display:grid; place-items:center; border:1px solid #c3ed9b20; background:#c3ed9b08; border-radius:8px; font-size:10px; font-variant-numeric:tabular-nums; color:var(--accent); }
+    li:last-child { margin-bottom:0; }
+    strong { color:#f2f4ef; font-weight:550; }
     .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    button,.download { border:1px solid #ffffff24; border-radius:9px; padding:10px 13px; font:500 12px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-decoration:none; display:inline-flex; justify-content:center; align-items:center; cursor:pointer; }
-    button { background:#efeff3; color:#0d0d10; flex:1; font-family:inherit; font-size:12px; font-weight:600; }
-    button:hover:enabled { background:white; }
+    button,.download { min-height:42px; border:1px solid #ffffff1c; border-radius:10px; padding:10px 12px; font:500 12px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-decoration:none; display:inline-flex; justify-content:center; align-items:center; cursor:pointer; }
+    button { background:var(--accent); color:#172115; flex:1; font-family:inherit; font-weight:600; }
+    button:hover:enabled { background:#d1f5b0; }
     button:disabled { opacity:.55; cursor:wait; }
-    .download { background:#1c1c23; color:#dedee7; font-size:12px; }
-    .download:hover { background:#292931; }
-    .bookmarklet { display:flex; justify-content:center; align-items:center; gap:7px; width:100%; padding:13px;
-      background:#efeff3; color:#101014; border:1px solid #efeff3; border-radius:10px; font-size:14px;
-      font-weight:650; text-decoration:none; cursor:grab; }
-    .bookmarklet:hover { background:white; }
+    .download { background:#1d2020; color:#e1e6dc; }
+    .download:hover { background:#292f2a; border-color:#c3ed9b40; }
+    .bookmarklet { display:flex; justify-content:center; align-items:center; gap:7px; width:100%; min-height:51px; padding:14px;
+      background:var(--accent); color:#172115; border:1px solid var(--accent); border-radius:12px; font-size:14px;
+      font-weight:650; text-decoration:none; cursor:grab; box-shadow:0 4px 22px #c3ed9b09; }
+    .bookmarklet:hover { background:#d1f5b0; box-shadow:0 4px 24px #c3ed9b16; }
     .bookmarklet:active { cursor:grabbing; }
-    #copy-bookmarklet { background:#1c1c23; color:#dedee7; font-weight:500; }
-    .bookmarklet-help { margin:10px 0 14px; font-size:11px; }
-    details { margin-top:20px; padding-top:16px; border-top:1px solid #ffffff18; }
-    summary { font-size:11px; color:#aaaab9; cursor:pointer; }
+    #copy-bookmarklet { background:#1d2020; color:#e1e6dc; font-weight:500; }
+    #copy-bookmarklet:hover:enabled { background:#292f2a; border-color:#c3ed9b40; }
+    .bookmarklet-help { margin:11px 0 17px; font-size:11px; text-align:center; }
+    details { margin-top:22px; padding-top:18px; border-top:1px solid #ffffff10; }
+    summary { min-height:24px; font-size:12px; color:#d9dfd3; cursor:pointer; }
+    details[open] summary { margin-bottom:16px; }
     #copy-loader { width:100%; flex-basis:100%; }
-    #copy-script { background:#1c1c23; border-color:#ffffff24; color:#dedee7; }
-    #copy-script:hover:enabled { background:#292931; }
-    .loader { display:block; padding:12px; margin:12px 0; border:1px solid #ffffff1c; border-radius:9px; background:#0c0c10; color:#bdbdcb; font:10px/1.7 monospace; overflow-wrap:anywhere; }
-    .hint { font-size:10px; line-height:1.7; margin:12px 0 0; }
-    a { color:#c6c6d2; text-underline-offset:3px; }
-    button:focus-visible,a:focus-visible,textarea:focus-visible { outline:2px solid #d2d2e5; outline-offset:4px; }
-    #copy-status { min-height:18px; font-size:11px; line-height:1.6; margin:12px 0 0; color:#bdbdcb; }
-    textarea { width:100%; height:150px; margin-top:12px; padding:10px; resize:vertical; color:#dedee8; background:#18181f; border:1px solid #ffffff30; border-radius:8px; font:11px/1.5 monospace; }
+    #copy-script { background:#1d2020; border-color:#ffffff1c; color:#e1e6dc; }
+    #copy-script:hover:enabled { background:#292f2a; }
+    .loader { display:block; padding:13px; margin:12px 0; border:1px solid #ffffff13; border-radius:10px; background:#101312; color:#b8c2b1; font:10px/1.7 monospace; overflow-wrap:anywhere; }
+    .hint { font-size:11px; line-height:1.75; margin:14px 0 0; }
+    details .actions { margin-top:14px; }
+    a { color:#d0ddc3; text-underline-offset:3px; }
+    button:focus-visible,a:focus-visible,summary:focus-visible,textarea:focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
+    #copy-status { min-height:18px; font-size:11px; line-height:1.6; margin:14px 0 0; color:#d0e7be; overflow-wrap:anywhere; }
+    textarea { width:100%; height:150px; margin-top:12px; padding:12px; resize:vertical; color:#e3e9df; background:#1d2020; border:1px solid #ffffff30; border-radius:10px; font:11px/1.6 monospace; }
     [hidden] { display:none !important; }
-    footer { padding:16px 3px 0; }
-    .health { display:flex; align-items:flex-start; gap:7px; margin-bottom:9px; font-size:10px; color:#9696a5; }
-    .health::before { content:""; width:5px; height:5px; margin-top:5px; flex-shrink:0; border-radius:50%; background:#777789; }
-    .health[data-state=ready]::before { background:#b4c9bd; }
+    footer { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px 24px; padding:21px 0 0; border-top:1px solid #ffffff0d; }
+    .health { display:flex; align-items:flex-start; gap:8px; font-size:11px; color:#a4aaa2; }
+    .health::before { content:""; width:6px; height:6px; margin-top:5px; flex-shrink:0; border-radius:50%; background:#7c8776; }
+    .health[data-state=ready]::before { background:var(--accent); box-shadow:0 0 0 3px #c3ed9b0b; }
     .health[data-state=pending]::before { background:#d0ba8e; }
-    footer p { font-size:10px; margin:0; }
-    @media (max-width:400px) { body { padding:28px 16px; } .card { padding:21px; } h1 { font-size:22px; } }
+    footer p { max-width:400px; font-size:11px; margin:0; }
+    @media (prefers-reduced-motion:no-preference) { button,a,summary { transition:background .18s,border-color .18s,box-shadow .18s,color .18s; } }
+    @media (max-width:850px) { .layout { gap:36px; grid-template-columns:minmax(0,1fr) minmax(0,410px); } h1 { font-size:46px; letter-spacing:-2px; } .editor-example { margin-left:0; } .example-caption { margin-left:0; } }
+    @media (max-width:700px) { body { padding:24px 20px; } header { padding-bottom:22px; } .layout { grid-template-columns:1fr; gap:32px; padding:32px 0; } .intro { padding-top:0; } h1 { max-width:490px; margin-bottom:18px; font-size:48px; } .intro-copy { max-width:460px; margin-bottom:0; } .editor-example,.example-caption { display:none; } .eyebrow { margin-bottom:17px; } .card { width:100%; max-width:500px; justify-self:center; } .header-note { font-size:10px; } }
+    @media (max-width:400px) { body { padding:20px 16px; } .card { padding:22px 20px; border-radius:18px; } h1 { font-size:41px; letter-spacing:-1.8px; } .header-note { display:none; } .actions { gap:7px; } button,.download { padding-left:10px; padding-right:10px; } }
   </style>
 </head>
 <body>
   <main>
-    <header><span class="logo" aria-hidden="true">RB</span><span class="brand">Redator</span><span class="badge">BATATA</span></header>
-    <section class="card" aria-labelledby="install-title">
-      <h1 id="install-title">Seu hub, em um favorito.</h1>
-      <p>Salve uma vez e abra o hub na página com um clique. Público, sem login ou código de acesso.</p>
+    <header><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h9l5 5v13H5zM14 3v6h5M8 13h8M8 17h5"/></svg></span><span class="brand">Redator</span><span class="badge">BATATA</span><span class="header-note">Um espaço para suas ideias.</span></header>
+    <div class="layout">
+    <section class="intro" aria-labelledby="install-title">
+      <p class="eyebrow">DA REFERÊNCIA À REDAÇÃO</p>
+      <h1 id="install-title">Seu hub,<br> em um <span>favorito.</span></h1>
+      <p class="intro-copy">Transforme referências em texto, com espaço para dar o seu toque. Configure, gere e revise sem sair da página.</p>
+      <div class="editor-example" aria-hidden="true">
+        <div class="example-header"><span class="example-symbol">✦</span> Redator Batata <span class="example-version">SEU ESPAÇO DE ESCRITA</span></div>
+        <div class="example-row"><span>Referência</span><span>Texto da página ↗</span></div>
+        <div class="example-row"><span>Nível de escrita</span><span>Médio</span></div>
+        <div class="example-row"><span>Extensão</span><span>350 palavras</span></div>
+        <span class="example-action">✦ &nbsp; Gerar redação</span>
+      </div>
+      <p class="example-caption">Pequeno na tela. Pronto para suas ideias.</p>
+    </section>
+    <section class="card" aria-labelledby="setup-title">
+      <p class="eyebrow">COMECE POR AQUI</p>
+      <h2 id="setup-title">Instale uma vez. Use quando quiser.</h2>
+      <p class="card-description">Público, sem login ou código de acesso.</p>
       <ol>
         <li><span>Mostre a <strong>barra de favoritos</strong> do navegador: Ctrl+Shift+B no Chrome ou Edge; no Mac, ⌘⇧B.</span></li>
         <li><span>Arraste o botão <strong>★ Redator Batata</strong> abaixo para essa barra.</span></li>
@@ -84,6 +126,7 @@
       <label id="manual-label" for="manual-script" hidden>Script para copiar manualmente</label>
       <textarea id="manual-script" readonly spellcheck="false" aria-labelledby="manual-label" hidden></textarea>
     </section>
+    </div>
     <footer>
       <div class="health" id="health-status" role="status">Verificando a configuração do servidor…</div>
       <p>Use o Redator Batata sem informar credenciais no hub. <a href="/api/health">Estado do serviço</a></p>
