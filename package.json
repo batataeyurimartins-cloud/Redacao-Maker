@@ -1,8 +1,8 @@
 {
   "name": "redator-batata-console",
-  "version": "1.10.2",
+  "version": "1.11.0",
   "private": true,
-  "description": "Hub preto e compacto para redações em português com geração por IA, direto no console",
+  "description": "Hub compacto para redações em português, com visual escuro e geração por IA",
   "scripts": {
     "build": "node scripts/build.cjs",
     "test": "node --test tests/*.test.cjs",
